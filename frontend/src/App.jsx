@@ -3,6 +3,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import HomePage from "./pages/HomePage";
+import ProblemStatementsPage from "./pages/ProblemStatementsPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import StubPage from "./pages/StubPage";
 
@@ -14,6 +15,7 @@ export default function App() {
         <main className="flex-grow">
           <Routes>
             <Route path="/" element={<HomePage />} />
+            <Route path="/problem-statements" element={<ProblemStatementsPage />} />
             <Route path="/coming-soon" element={<ComingSoonPage />} />
             <Route
               path="/register"
@@ -22,16 +24,6 @@ export default function App() {
                   title="Registration Portal"
                   description="Registrations for CodeShield 2026 will open shortly once final dates and team quotas are released."
                   statusTag="Registrations Opening Soon"
-                />
-              }
-            />
-            <Route
-              path="/problem-statements"
-              element={
-                <StubPage
-                  title="Problem Statements"
-                  description="Challenge briefs and problem domains covering Cybersecurity and Innovation & Emerging Technologies will be released prior to the event kickoff."
-                  statusTag="Tracks Defined &middot; Briefs Pending"
                 />
               }
             />

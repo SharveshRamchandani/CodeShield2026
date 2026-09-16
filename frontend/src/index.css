@@ -3,20 +3,7 @@
 @tailwind utilities;
 
 @layer base {
-  :root, [data-theme="dark"] {
-    --color-base: #0B0F14;
-    --color-panel: #131A24;
-    --color-hairline: #1C2633;
-    --color-amber: #FFB100;
-    --color-cyan: #22D3EE;
-    --color-cyan-hover: #67e8f9;
-    --color-content: #E7EDF3;
-    --color-muted: #8B9BB0;
-    --color-subtle: #5A687A;
-    --color-grid: rgba(34, 211, 238, 0.035);
-  }
-
-  [data-theme="light"], .light {
+  :root, [data-theme="light"], .light {
     --color-base: #F4F6F8;
     --color-panel: #E7EBEF;
     --color-hairline: #D1D8E0;
@@ -27,6 +14,19 @@
     --color-muted: #536273;
     --color-subtle: #708094;
     --color-grid: rgba(8, 145, 168, 0.045);
+  }
+
+  [data-theme="dark"], .dark {
+    --color-base: #0B0F14;
+    --color-panel: #131A24;
+    --color-hairline: #1C2633;
+    --color-amber: #FFB100;
+    --color-cyan: #22D3EE;
+    --color-cyan-hover: #67e8f9;
+    --color-content: #E7EDF3;
+    --color-muted: #8B9BB0;
+    --color-subtle: #5A687A;
+    --color-grid: rgba(34, 211, 238, 0.035);
   }
 
   *,

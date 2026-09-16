@@ -9,8 +9,11 @@ lerna-debug.log*
 
 # Dependencies
 node_modules
+frontend/node_modules
 dist
+frontend/dist
 dist-ssr
+frontend/dist-ssr
 *.local
 *.tsbuildinfo
 .next

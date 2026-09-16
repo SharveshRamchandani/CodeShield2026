@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { supabase, FALLBACK_PROBLEM_STATEMENTS } from "../lib/supabase";
+import { getProblemStatements } from "../api/problemStatements";
 
 export default function ProblemStatementsPage() {
   const [problemStatements, setProblemStatements] = useState([]);
@@ -11,35 +11,25 @@ export default function ProblemStatementsPage() {
   useEffect(() => {
     let isMounted = true;
 
-    async function fetchProblemStatements() {
+    async function loadData() {
       setLoading(true);
-      if (supabase) {
-        try {
-          const { data, error } = await supabase
-            .from("problem_statements")
-            .select("id, code, title, description, domain")
-            .order("code", { ascending: true });
-
-          if (!error && data && data.length > 0) {
-            if (isMounted) {
-              setProblemStatements(data);
-              setLoading(false);
-              return;
-            }
-          }
-        } catch {
-          // fallback on connection error
+      try {
+        const data = await getProblemStatements();
+        if (isMounted) {
+          setProblemStatements(data || []);
         }
-      }
-
-      // Fallback to local catalog
-      if (isMounted) {
-        setProblemStatements(FALLBACK_PROBLEM_STATEMENTS);
-        setLoading(false);
+      } catch {
+        if (isMounted) {
+          setProblemStatements([]);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
-    fetchProblemStatements();
+    loadData();
 
     return () => {
       isMounted = false;
@@ -61,9 +51,9 @@ export default function ProblemStatementsPage() {
       const q = searchQuery.trim().toLowerCase();
       const matchesSearch =
         !q ||
-        item.code.toLowerCase().includes(q) ||
-        item.title.toLowerCase().includes(q) ||
-        item.description.toLowerCase().includes(q);
+        item.code?.toLowerCase().includes(q) ||
+        item.title?.toLowerCase().includes(q) ||
+        item.description?.toLowerCase().includes(q);
 
       return matchesDomain && matchesSearch;
     });

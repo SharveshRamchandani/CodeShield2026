@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: ["class", '[data-theme="dark"]'],
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,12 +8,15 @@ export default {
   theme: {
     extend: {
       colors: {
-        base: "#0B0F14",
-        panel: "#131A24",
-        hairline: "#1C2633",
-        amber: "#FFB100",
-        cyan: "#22D3EE",
-        content: "#E7EDF3",
+        base: "var(--color-base)",
+        panel: "var(--color-panel)",
+        hairline: "var(--color-hairline)",
+        amber: "var(--color-amber)",
+        cyan: "var(--color-cyan)",
+        "cyan-hover": "var(--color-cyan-hover)",
+        content: "var(--color-content)",
+        muted: "var(--color-muted)",
+        subtle: "var(--color-subtle)",
       },
       fontFamily: {
         mono: ["'JetBrains Mono'", "monospace"],

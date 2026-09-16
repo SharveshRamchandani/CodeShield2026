@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { useTheme } from "../context/ThemeContext";
 
-export default function App() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [coords, setCoords] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+export default function ComingSoonPage() {
+  const canvasRef = useRef(null);
+  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const { isDark } = useTheme();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -10,7 +12,7 @@ export default function App() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animId: number;
+    let animId;
     let angle = 0;
 
     const resize = () => {
@@ -25,7 +27,7 @@ export default function App() {
     resize();
     window.addEventListener("resize", resize);
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMouseMove = (e) => {
       setCoords({ x: e.clientX, y: e.clientY });
     };
     window.addEventListener("mousemove", handleMouseMove);
@@ -39,10 +41,15 @@ export default function App() {
 
       ctx.clearRect(0, 0, w, h);
 
+      // Theme-adaptive radar color channels
+      const r = isDark ? 34 : 8;
+      const g = isDark ? 211 : 145;
+      const b = isDark ? 238 : 168;
+
       // Radar Concentric Rings
       const rings = [0.2, 0.4, 0.65, 0.9];
       rings.forEach((rRatio) => {
-        ctx.strokeStyle = "rgba(34, 211, 238, 0.06)";
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${isDark ? 0.06 : 0.12})`;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(cx, cy, maxR * rRatio, 0, Math.PI * 2);
@@ -50,7 +57,7 @@ export default function App() {
       });
 
       // Crosshair Grid Lines
-      ctx.strokeStyle = "rgba(34, 211, 238, 0.05)";
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${isDark ? 0.05 : 0.1})`;
       ctx.beginPath();
       ctx.moveTo(cx - maxR, cy);
       ctx.lineTo(cx + maxR, cy);
@@ -64,9 +71,9 @@ export default function App() {
       for (let i = 0; i < tailSlices; i++) {
         const start = angle - (tailSpan * (i + 1)) / tailSlices;
         const end = angle - (tailSpan * i) / tailSlices;
-        const alpha = ((tailSlices - i) / tailSlices) * 0.065;
+        const alpha = ((tailSlices - i) / tailSlices) * (isDark ? 0.065 : 0.08);
 
-        ctx.fillStyle = `rgba(34, 211, 238, ${alpha})`;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.arc(cx, cy, maxR, start, end, false);
@@ -75,7 +82,7 @@ export default function App() {
       }
 
       // Razor Scan Line
-      ctx.strokeStyle = "rgba(34, 211, 238, 0.75)";
+      ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${isDark ? 0.75 : 0.85})`;
       ctx.lineWidth = 1.25;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
@@ -93,17 +100,17 @@ export default function App() {
       window.removeEventListener("mousemove", handleMouseMove);
       if (animId) cancelAnimationFrame(animId);
     };
-  }, []);
+  }, [isDark]);
 
   return (
-    <main className="relative min-h-screen w-full bg-[#0B0F14] text-[#E7EDF3] flex flex-col items-center justify-center overflow-hidden select-none font-mono">
+    <main className="relative min-h-[calc(100vh-4rem)] w-full bg-base text-content flex flex-col items-center justify-center overflow-hidden select-none font-mono">
       {/* Background Tactical Grid Pattern */}
       <div
         className="absolute inset-0 pointer-events-none opacity-60"
         style={{
           backgroundImage: `
-            linear-gradient(to right, rgba(34, 211, 238, 0.035) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(34, 211, 238, 0.035) 1px, transparent 1px)
+            linear-gradient(to right, var(--color-grid) 1px, transparent 1px),
+            linear-gradient(to bottom, var(--color-grid) 1px, transparent 1px)
           `,
           backgroundSize: "48px 48px",
         }}
@@ -114,43 +121,45 @@ export default function App() {
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: "radial-gradient(circle at center, transparent 30%, rgba(11, 15, 20, 0.85) 90%)",
+          background: isDark
+            ? "radial-gradient(circle at center, transparent 30%, rgba(11, 15, 20, 0.85) 90%)"
+            : "radial-gradient(circle at center, transparent 30%, rgba(244, 246, 248, 0.85) 90%)",
         }}
       />
 
       {/* Corner UI Framing */}
-      <div className="absolute top-6 left-6 text-[10px] text-[#5A687A] uppercase tracking-widest pointer-events-none hidden sm:block">
+      <div className="absolute top-6 left-6 text-[10px] text-subtle uppercase tracking-widest pointer-events-none hidden sm:block">
         SYS.LOC // [42.3601° N, 71.0942° W]
       </div>
-      <div className="absolute top-6 right-6 text-[10px] text-[#5A687A] uppercase tracking-widest pointer-events-none hidden sm:block">
+      <div className="absolute top-6 right-6 text-[10px] text-subtle uppercase tracking-widest pointer-events-none hidden sm:block">
         FREQ // 24.195 GHZ
       </div>
-      <div className="absolute bottom-6 left-6 text-[10px] text-[#5A687A] uppercase tracking-widest pointer-events-none hidden sm:block">
+      <div className="absolute bottom-6 left-6 text-[10px] text-subtle uppercase tracking-widest pointer-events-none hidden sm:block">
         DEFENSE PROTOCOL // 2026
       </div>
-      <div className="absolute bottom-6 right-6 text-[10px] text-[#5A687A] uppercase tracking-widest pointer-events-none hidden sm:block">
+      <div className="absolute bottom-6 right-6 text-[10px] text-subtle uppercase tracking-widest pointer-events-none hidden sm:block">
         CURSOR // {coords.x}X {coords.y}Y
       </div>
 
       {/* Centerpiece Hero */}
       <div className="relative z-10 text-center px-6 max-w-4xl flex flex-col items-center">
         {/* Status Badge */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 mb-6 border border-[#1C2633] bg-[#131A24]/90 backdrop-blur-md text-[11px] text-[#FFB100] tracking-widest uppercase">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#FFB100] animate-ping" />
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 mb-6 border border-hairline bg-panel/90 backdrop-blur-md text-[11px] text-amber tracking-widest uppercase font-semibold">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber animate-ping" />
           <span>SCANNING PERIMETER</span>
         </div>
 
         {/* Brand Title */}
-        <h1 className="text-5xl sm:text-7xl lg:text-8xl font-extrabold tracking-tighter text-[#E7EDF3] leading-none mb-4 font-sans drop-shadow-2xl">
+        <h1 className="text-5xl sm:text-7xl lg:text-8xl font-extrabold tracking-tighter text-content leading-none mb-4 font-sans drop-shadow-sm">
           CodeShield
         </h1>
 
         {/* Subtitle / Coming Soon */}
-        <div className="flex items-center gap-3 text-sm sm:text-lg lg:text-xl text-[#22D3EE] font-mono tracking-widest uppercase">
-          <span className="text-[#5A687A]">//</span>
+        <div className="flex items-center gap-3 text-sm sm:text-lg lg:text-xl text-cyan font-mono tracking-widest uppercase">
+          <span className="text-subtle">//</span>
           <span className="font-semibold">COMING SOON</span>
-          <span className="text-[#5A687A]">//</span>
-          <span className="text-[#8B9BB0] text-xs sm:text-sm">2026</span>
+          <span className="text-subtle">//</span>
+          <span className="text-muted text-xs sm:text-sm">2026</span>
         </div>
       </div>
     </main>

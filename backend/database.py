@@ -4,8 +4,12 @@ from typing import Generator
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
-
-load_dotenv()
+# Ensure .env is loaded from the backend directory regardless of cwd
+env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 

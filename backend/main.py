@@ -1,14 +1,20 @@
 import os
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+
+# Ensure .env is loaded from the backend directory regardless of cwd
+env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(env_path):
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()
 
 from routes.problem_statements import router as problem_statements_router
 from routes.teams import router as teams_router
 from routes.submissions import router as submissions_router
 from routes.admin import router as admin_router
-
-load_dotenv()
 
 app = FastAPI(
     title="CodeShield 2026 API",
@@ -42,3 +48,7 @@ def health_check():
         "service": "CodeShield 2026 Backend",
         "version": "1.0.0",
     }
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

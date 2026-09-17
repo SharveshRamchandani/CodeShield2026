@@ -1,27 +1,26 @@
-import { supabase, FALLBACK_PROBLEM_STATEMENTS } from "../lib/supabase";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 /**
- * Fetches all problem statements.
- * Temporary data layer using Supabase client directly.
- * Can be swapped cleanly to `fetch('/api/problem-statements')` when the backend is ready.
+ * Fetches all problem statements from the FastAPI backend.
  *
- * @returns {Promise<Array<{code: string, title: string, description: string, domain: string}>>}
+ * @param {string} [domain] - Optional domain filter
+ * @returns {Promise<Array<{code: string, title: string, description: string, domain: string, id?: string}>>}
  */
-export async function getProblemStatements() {
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("problem_statements")
-        .select("id, code, title, description, domain")
-        .order("code", { ascending: true });
+export async function getProblemStatements(domain) {
+  try {
+    const url = domain
+      ? `${API_BASE_URL}/api/problem-statements/?domain=${encodeURIComponent(domain)}`
+      : `${API_BASE_URL}/api/problem-statements/`;
 
-      if (!error && data && data.length > 0) {
-        return data;
-      }
-    } catch {
-      // Return fallback catalog on connection failure
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch problem statements: ${res.status} ${res.statusText}`);
     }
-  }
 
-  return FALLBACK_PROBLEM_STATEMENTS;
+    const data = await res.json();
+    return data;
+  } catch (error) {
+    console.error("Error fetching problem statements from backend:", error);
+    return [];
+  }
 }

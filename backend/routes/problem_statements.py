@@ -1,7 +1,13 @@
+import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from psycopg2.extras import RealDictCursor
+import psycopg2
+
 from models.schemas import ProblemStatementOut
 from database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Problem Statements"])
 
@@ -17,12 +23,41 @@ def list_problem_statements(
     db=Depends(get_db),
 ):
     """
-    Fetch all 32 problem statements ordered by code.
-    Allows optional query filtering by domain.
-    Query logic will be implemented in the feature pass.
+    Fetch all problem statements ordered by domain then code ascending.
+    Supports optional domain filtering.
     """
-    # Stub: Query logic to be implemented
-    return []
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            if domain:
+                query = """
+                    SELECT id, code, title, description, domain
+                    FROM problem_statements
+                    WHERE domain = %s
+                    ORDER BY domain ASC, code ASC;
+                """
+                cur.execute(query, (domain,))
+            else:
+                query = """
+                    SELECT id, code, title, description, domain
+                    FROM problem_statements
+                    ORDER BY domain ASC, code ASC;
+                """
+                cur.execute(query)
+
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+    except psycopg2.Error as db_err:
+        logger.error(f"Database error while fetching problem statements: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve problem statements from database",
+        )
+    except Exception as exc:
+        logger.error(f"Unexpected error while fetching problem statements: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal server error occurred",
+        )
 
 
 @router.get(
@@ -36,8 +71,36 @@ def get_problem_statement(
     db=Depends(get_db),
 ):
     """
-    Fetch a single problem statement by its code identifier (e.g. CS 01, IT 02).
-    Query logic will be implemented in the feature pass.
+    Fetch a single problem statement by its code identifier (e.g. 'CS 01', 'IT 01').
     """
-    # Stub: Query logic to be implemented
-    return None
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            query = """
+                SELECT id, code, title, description, domain
+                FROM problem_statements
+                WHERE code = %s;
+            """
+            cur.execute(query, (code,))
+            row = cur.fetchone()
+
+            if not row:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Problem statement with code '{code}' not found",
+                )
+
+            return dict(row)
+    except HTTPException:
+        raise
+    except psycopg2.Error as db_err:
+        logger.error(f"Database error while fetching problem statement {code}: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve problem statement '{code}'",
+        )
+    except Exception as exc:
+        logger.error(f"Unexpected error while fetching problem statement {code}: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal server error occurred",
+        )

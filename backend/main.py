@@ -11,9 +11,11 @@ if os.path.exists(env_path):
 else:
     load_dotenv()
 
+from routes.auth import router as auth_router
 from routes.problem_statements import router as problem_statements_router
-from routes.teams import router as teams_router
+from routes.teams import router as teams_router, register_team, confirm_team
 from routes.submissions import router as submissions_router
+from routes.scores import router as scores_router
 from routes.admin import router as admin_router
 
 app = FastAPI(
@@ -23,7 +25,10 @@ app = FastAPI(
 )
 
 # Configure CORS
-origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,https://codeshield2026.vercel.app")
+origins_env = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,https://codeshield2026.vercel.app",
+)
 allowed_origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
 
 app.add_middleware(
@@ -35,10 +40,28 @@ app.add_middleware(
 )
 
 # Register API Routers
+app.include_router(auth_router, prefix="/api/auth")
 app.include_router(problem_statements_router, prefix="/api/problem-statements")
 app.include_router(teams_router, prefix="/api/teams")
 app.include_router(submissions_router, prefix="/api/submissions")
+app.include_router(scores_router, prefix="/api/scores")
 app.include_router(admin_router, prefix="/api/admin")
+
+# Top-level route aliases for convenience
+app.add_api_route(
+    "/api/register",
+    register_team,
+    methods=["POST"],
+    tags=["Teams & Registration"],
+    summary="Register a new team (Alias)",
+)
+app.add_api_route(
+    "/api/confirm/{token}",
+    confirm_team,
+    methods=["GET"],
+    tags=["Teams & Registration"],
+    summary="Confirm team registration via email token (Alias)",
+)
 
 
 @app.get("/health", tags=["Health"])

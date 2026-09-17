@@ -1,11 +1,19 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
 
 export default function Navbar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { theme, toggleTheme, isDark } = useTheme();
+  const { toggleTheme, isDark } = useTheme();
+  const { user, isAuthenticated, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   const navLinks = [
     { label: "Problem Statements", path: "/problem-statements" },
@@ -66,6 +74,56 @@ export default function Navbar() {
                 </Link>
               );
             })}
+
+            {/* Role-Specific Navigation Links */}
+            {isAuthenticated && user?.role === "admin" && (
+              <Link
+                to="/admin"
+                className={`text-xs font-mono px-2.5 py-1 border border-cyan/40 bg-cyan/10 transition-colors ${
+                  location.pathname === "/admin"
+                    ? "text-cyan font-bold border-cyan"
+                    : "text-cyan hover:bg-cyan/20"
+                }`}
+              >
+                ADMIN DASHBOARD
+              </Link>
+            )}
+
+            {isAuthenticated && user?.role === "judge" && (
+              <Link
+                to="/judge"
+                className={`text-xs font-mono px-2.5 py-1 border border-cyan/40 bg-cyan/10 transition-colors ${
+                  location.pathname === "/judge"
+                    ? "text-cyan font-bold border-cyan"
+                    : "text-cyan hover:bg-cyan/20"
+                }`}
+              >
+                JUDGE PORTAL
+              </Link>
+            )}
+
+            {/* Auth Session Action (Login / Logout) */}
+            {isAuthenticated ? (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="text-xs font-mono text-muted hover:text-amber transition-colors"
+                title={`Logged in as ${user?.name || user?.email} (${user?.role})`}
+              >
+                [LOGOUT]
+              </button>
+            ) : (
+              <Link
+                to="/login"
+                className={`text-xs font-mono transition-colors ${
+                  location.pathname === "/login"
+                    ? "text-cyan font-bold"
+                    : "text-muted hover:text-content"
+                }`}
+              >
+                [SIGN IN]
+              </Link>
+            )}
           </nav>
 
           {/* Theme Toggle Button */}
@@ -77,7 +135,6 @@ export default function Navbar() {
             title={isDark ? "Switch to light mode" : "Switch to dark mode"}
           >
             {isDark ? (
-              // Sun Icon
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className="w-4 h-4"
@@ -100,7 +157,6 @@ export default function Navbar() {
                 <path d="m19.07 4.93-1.41 1.41" />
               </svg>
             ) : (
-              // Moon Icon
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className="w-4 h-4"
@@ -153,13 +209,13 @@ export default function Navbar() {
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-hairline bg-base px-6 py-4 flex flex-col gap-4">
+        <div className="md:hidden border-t border-hairline bg-base px-6 py-4 flex flex-col gap-4 font-mono text-sm">
           {navLinks.map((link) => (
             <Link
               key={link.path}
               to={link.path}
               onClick={() => setMobileMenuOpen(false)}
-              className={`text-sm font-mono py-2 transition-colors ${
+              className={`py-1.5 transition-colors ${
                 link.highlight
                   ? "text-cyan font-semibold"
                   : "text-muted hover:text-content"
@@ -168,6 +224,54 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+
+          {isAuthenticated && user?.role === "admin" && (
+            <Link
+              to="/admin"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 text-cyan font-bold"
+            >
+              &rarr; Admin Dashboard
+            </Link>
+          )}
+
+          {isAuthenticated && user?.role === "judge" && (
+            <Link
+              to="/judge"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 text-cyan font-bold"
+            >
+              &rarr; Judge Portal
+            </Link>
+          )}
+
+          <div className="pt-2 border-t border-hairline flex items-center justify-between text-xs">
+            {isAuthenticated ? (
+              <>
+                <span className="text-subtle">
+                  User: {user?.name || user?.email} ({user?.role})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleLogout();
+                  }}
+                  className="text-amber hover:underline"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-cyan hover:underline"
+              >
+                Sign In &rarr;
+              </Link>
+            )}
+          </div>
         </div>
       )}
     </header>

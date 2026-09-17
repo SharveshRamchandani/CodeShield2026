@@ -10,7 +10,7 @@ import StubPage from "./pages/StubPage";
 export default function App() {
   return (
     <ThemeProvider>
-      <div className="min-h-screen bg-base text-content flex flex-col justify-between selection:bg-cyan selection:text-base transition-colors">
+      <div className="min-h-screen bg-base text-content flex flex-col justify-between selection:bg-cyan/30 selection:text-content transition-colors">
         <Navbar />
         <main className="flex-grow">
           <Routes>

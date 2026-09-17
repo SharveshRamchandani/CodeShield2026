@@ -234,14 +234,23 @@ export default function ProblemStatementsPage() {
 
                     {/* Accordion Expanded Content */}
                     {isExpanded && (
-                      <div className="px-4 sm:px-6 pb-6 pt-3 pl-6 sm:pl-28 border-t border-hairline/30 text-sm leading-relaxed bg-transparent">
-                        <div className="max-w-3xl space-y-3">
+                      <div className="px-4 sm:px-6 pb-6 pt-3 pl-6 sm:pl-28 border-t border-hairline/40">
+                        <div className="max-w-3xl space-y-4">
+                          {/* Metadata Row */}
                           <div className="flex flex-wrap items-center gap-6 font-mono text-xs text-subtle">
-                            <span>TRACK: <strong className="text-content font-medium">{item.domain}</strong></span>
-                            <span>IDENTIFIER: <strong className="text-cyan font-medium">{item.code}</strong></span>
+                            <span>
+                              TRACK: <strong className="text-content font-semibold">{item.domain}</strong>
+                            </span>
+                            <span>
+                              IDENTIFIER: <strong className="text-cyan font-semibold">{item.code}</strong>
+                            </span>
                           </div>
 
-                          <div className="pt-1">
+                          {/* Problem Statement Description Box */}
+                          <div className="p-4 sm:p-5 bg-panel/60 border-l-2 border-l-cyan border-y border-r border-hairline/60">
+                            <span className="font-mono text-[11px] font-semibold tracking-wider text-cyan uppercase block mb-2">
+                              // PROBLEM STATEMENT BRIEF
+                            </span>
                             <p className="text-content text-sm sm:text-base font-normal leading-relaxed">
                               {item.description || "No description provided for this problem statement."}
                             </p>

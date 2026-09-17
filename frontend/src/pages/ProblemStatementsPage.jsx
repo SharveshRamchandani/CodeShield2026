@@ -197,7 +197,7 @@ export default function ProblemStatementsPage() {
                   <div
                     key={itemKey}
                     className={`transition-colors ${
-                      isExpanded ? "bg-panel/60" : "hover:bg-panel/30"
+                      isExpanded ? "bg-panel/30" : "hover:bg-panel/20"
                     }`}
                   >
                     {/* Row Header (Clickable & Keyboard Accessible) */}
@@ -234,14 +234,17 @@ export default function ProblemStatementsPage() {
 
                     {/* Accordion Expanded Content */}
                     {isExpanded && (
-                      <div className="px-4 sm:px-6 pb-6 pt-2 pl-6 sm:pl-28 border-t border-hairline/40 text-sm text-muted leading-relaxed">
-                        <div className="max-w-3xl space-y-4">
-                          <p className="text-content text-sm sm:text-base font-normal">
-                            {item.description}
-                          </p>
-                          <div className="pt-2 flex flex-wrap items-center gap-6 font-mono text-xs text-subtle">
+                      <div className="px-4 sm:px-6 pb-6 pt-3 pl-6 sm:pl-28 border-t border-hairline/30 text-sm leading-relaxed bg-transparent">
+                        <div className="max-w-3xl space-y-3">
+                          <div className="flex flex-wrap items-center gap-6 font-mono text-xs text-subtle">
                             <span>TRACK: <strong className="text-content font-medium">{item.domain}</strong></span>
                             <span>IDENTIFIER: <strong className="text-cyan font-medium">{item.code}</strong></span>
+                          </div>
+
+                          <div className="pt-1">
+                            <p className="text-content text-sm sm:text-base font-normal leading-relaxed">
+                              {item.description || "No description provided for this problem statement."}
+                            </p>
                           </div>
                         </div>
                       </div>

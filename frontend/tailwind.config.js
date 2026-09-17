@@ -8,7 +8,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        base: "var(--color-base)",
+        surface: "var(--color-base)",
         panel: "var(--color-panel)",
         hairline: "var(--color-hairline)",
         amber: "var(--color-amber)",

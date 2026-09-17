@@ -18,7 +18,7 @@ export default function Navbar() {
       {/* Skip to Content for Accessibility */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-cyan focus:text-base focus:font-mono focus:text-xs font-semibold"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-cyan focus:text-zinc-950 focus:font-mono focus:text-xs font-bold"
       >
         Skip to main content
       </a>
@@ -46,7 +46,7 @@ export default function Navbar() {
                   <Link
                     key={link.path}
                     to={link.path}
-                    className="px-3.5 py-1.5 text-xs font-mono font-medium text-base bg-cyan hover:bg-cyan-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+                    className="px-3.5 py-1.5 text-xs font-mono font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan focus-visible:ring-offset-2"
                   >
                     {link.label}
                   </Link>

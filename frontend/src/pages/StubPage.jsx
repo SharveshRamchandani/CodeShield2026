@@ -24,7 +24,7 @@ export default function StubPage({ title, description, statusTag }) {
       <div className="flex flex-wrap gap-4">
         <Link
           to="/"
-          className="px-5 py-2.5 text-xs font-mono font-medium text-base bg-cyan hover:bg-cyan-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan focus-visible:ring-offset-2 focus-visible:ring-offset-base"
+          className="px-5 py-2.5 text-xs font-mono font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan focus-visible:ring-offset-2"
         >
           &larr; Return to Home
         </Link>

@@ -61,3 +61,12 @@
     outline-offset: 3px;
   }
 }
+
+@layer utilities {
+  .bg-base {
+    background-color: var(--color-base);
+  }
+  .bg-base\/90 {
+    background-color: color-mix(in srgb, var(--color-base) 90%, transparent);
+  }
+}

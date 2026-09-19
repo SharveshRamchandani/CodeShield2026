@@ -7,9 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from psycopg2.extras import RealDictCursor
 import psycopg2
 
-from models.schemas import TeamOut, AttendanceUpdate, UserOut, UserRoleUpdate, TeamConfirmUpdate
+from models.schemas import (
+    TeamOut,
+    AttendanceUpdate,
+    UserOut,
+    UserRoleUpdate,
+    UserCreateAdmin,
+    TeamConfirmUpdate,
+)
 from database import get_db
-from utils.auth import require_role
+from utils.auth import require_role, hash_password, get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -310,13 +317,14 @@ def update_user_role(
 ):
     """
     Instantly updates a user's role in the Supabase/PostgreSQL users table
-    between 'admin' and 'judge' with immediate transaction commit.
+    between 'admin', 'judge', 'leader', and 'member' with immediate transaction commit.
     """
     new_role = role_data.role.strip().lower()
-    if new_role not in ["admin", "judge"]:
+    allowed_roles = ["admin", "judge", "leader", "member"]
+    if new_role not in allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Role must be either 'admin' or 'judge'.",
+            detail=f"Role must be one of: {allowed_roles}",
         )
 
     try:
@@ -357,6 +365,117 @@ def update_user_role(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update user role in database",
+        )
+
+
+@router.post(
+    "/users",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new user directly with assigned role (Admin Only)",
+)
+def create_admin_user(
+    user_data: UserCreateAdmin,
+    db=Depends(get_db),
+):
+    """
+    Directly creates a new Admin, Judge, Team Leader, or Team Member account in the Supabase/Postgres database.
+    Works seamlessly with both Password and Google Identity login.
+    """
+    role = user_data.role.strip().lower()
+    allowed_roles = ["admin", "judge", "leader", "member"]
+    if role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Role must be one of: {allowed_roles}",
+        )
+
+    email = user_data.email.strip().lower()
+    name = user_data.name.strip()
+    if not name:
+        name = "Staff Member"
+    password = user_data.password.strip() if user_data.password else "codeshield2026"
+    password_hash = hash_password(password)
+
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # Check for duplicate email
+            cur.execute("SELECT id FROM users WHERE LOWER(email) = LOWER(%s);", (email,))
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"A user with email '{email}' already exists.",
+                )
+
+            cur.execute(
+                """
+                INSERT INTO users (email, password_hash, role, name)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, email, role, name, created_at;
+                """,
+                (email, password_hash, role, name),
+            )
+            created = cur.fetchone()
+            db.commit()
+
+            return {
+                "id": str(created["id"]),
+                "email": created["email"],
+                "role": created["role"],
+                "name": created["name"],
+                "created_at": created["created_at"],
+            }
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error creating staff user: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user in database",
+        )
+
+
+@router.delete(
+    "/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a staff user (Admin Only)",
+)
+def delete_admin_user(
+    user_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """
+    Permanently deletes a staff user account.
+    Admins are prevented from deleting their own active account.
+    """
+    if str(user_id) == str(current_user.get("id")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own active administrator account.",
+        )
+
+    try:
+        with db.cursor() as cur:
+            cur.execute("DELETE FROM users WHERE id = %s;", (str(user_id),))
+            if cur.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found.",
+                )
+            db.commit()
+            return
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error deleting staff user: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete user",
         )
 
 

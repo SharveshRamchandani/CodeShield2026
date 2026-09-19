@@ -17,8 +17,8 @@ router = APIRouter(tags=["Judging & Scores"])
 @router.post(
     "/",
     response_model=ScoreOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Submit judge scoring evaluation (Judge Only)",
+    status_code=status.HTTP_200_OK,
+    summary="Submit or update judge scoring evaluation (Judge Only)",
 )
 def submit_score(
     score_data: ScoreSubmit,
@@ -26,8 +26,9 @@ def submit_score(
     db=Depends(get_db),
 ):
     """
-    Records judge scoring evaluation for a team.
+    Records or updates judge scoring evaluation for a team.
     Enforces judge role; judge_name is securely derived from JWT user credentials.
+    If the judge has already scored this team, it updates the existing score.
     """
     judge_name = current_user.get("name") or "Judge"
 
@@ -45,31 +46,65 @@ def submit_score(
                     detail="Team not found for score submission.",
                 )
 
-            # Insert score record
-            insert_query = """
-                INSERT INTO scores (
-                    team_id, judge_name, innovation_score,
-                    execution_score, presentation_score, usefulness_score, notes
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s
-                ) RETURNING id, team_id, judge_name, innovation_score, execution_score, presentation_score, usefulness_score, notes, created_at;
-            """
+            # Check if score already exists for this team by this judge
             cur.execute(
-                insert_query,
-                (
-                    str(score_data.team_id),
-                    judge_name,
-                    score_data.innovation_score,
-                    score_data.execution_score,
-                    score_data.presentation_score,
-                    score_data.usefulness_score,
-                    score_data.notes,
-                ),
+                "SELECT id FROM scores WHERE team_id = %s AND judge_name = %s;",
+                (str(score_data.team_id), judge_name),
             )
-            created = cur.fetchone()
+            existing_score = cur.fetchone()
+
+            if existing_score:
+                # Update existing score
+                update_query = """
+                    UPDATE scores
+                    SET innovation_score = %s,
+                        execution_score = %s,
+                        presentation_score = %s,
+                        usefulness_score = %s,
+                        notes = %s,
+                        created_at = NOW()
+                    WHERE id = %s
+                    RETURNING id, team_id, judge_name, innovation_score, execution_score, presentation_score, usefulness_score, notes, created_at;
+                """
+                cur.execute(
+                    update_query,
+                    (
+                        score_data.innovation_score,
+                        score_data.execution_score,
+                        score_data.presentation_score,
+                        score_data.usefulness_score,
+                        score_data.notes,
+                        existing_score["id"],
+                    ),
+                )
+                saved_score = cur.fetchone()
+            else:
+                # Insert new score record
+                insert_query = """
+                    INSERT INTO scores (
+                        team_id, judge_name, innovation_score,
+                        execution_score, presentation_score, usefulness_score, notes
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s
+                    ) RETURNING id, team_id, judge_name, innovation_score, execution_score, presentation_score, usefulness_score, notes, created_at;
+                """
+                cur.execute(
+                    insert_query,
+                    (
+                        str(score_data.team_id),
+                        judge_name,
+                        score_data.innovation_score,
+                        score_data.execution_score,
+                        score_data.presentation_score,
+                        score_data.usefulness_score,
+                        score_data.notes,
+                    ),
+                )
+                saved_score = cur.fetchone()
+
             db.commit()
 
-            res = dict(created)
+            res = dict(saved_score)
             res["team_name"] = team["team_name"]
             res["team_code"] = team["team_code"]
             return res

@@ -11,6 +11,7 @@ import RegistrationPage from "./pages/RegistrationPage";
 import ConfirmationPage from "./pages/ConfirmationPage";
 import LoginPage from "./pages/LoginPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
+import JudgePage from "./pages/JudgePage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import StubPage from "./pages/StubPage";
 
@@ -59,11 +60,7 @@ export default function App() {
                 path="/judge"
                 element={
                   <ProtectedRoute allowedRoles={["judge"]}>
-                    <StubPage
-                      title="Judge Evaluation Portal"
-                      description="Welcome Judge! This portal is protected and authenticated specifically for panel judges to review team submissions and record scoring rubric evaluations."
-                      statusTag="Protected // Role: judge"
-                    />
+                    <JudgePage />
                   </ProtectedRoute>
                 }
               />

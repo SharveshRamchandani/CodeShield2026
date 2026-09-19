@@ -26,7 +26,14 @@ class UserOut(BaseModel):
 
 
 class UserRoleUpdate(BaseModel):
-    role: str = Field(..., description="Role to assign: 'admin' or 'judge'")
+    role: str = Field(..., description="Role to assign: 'admin', 'judge', 'leader', or 'member'")
+
+
+class UserCreateAdmin(BaseModel):
+    email: EmailStr
+    name: str
+    role: str = Field("judge", description="Role to assign: 'admin', 'judge', 'leader', or 'member'")
+    password: Optional[str] = "codeshield2026"
 
 
 class TeamConfirmUpdate(BaseModel):

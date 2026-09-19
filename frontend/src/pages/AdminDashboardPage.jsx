@@ -19,9 +19,17 @@ export default function AdminDashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTeamForDetails, setSelectedTeamForDetails] = useState(null);
   
-  // User Management Filters & State
+  // User Management Filters & Creation State
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [updatingUserId, setUpdatingUserId] = useState(null);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({
+    name: "",
+    email: "",
+    role: "judge",
+    password: "codeshield2026",
+  });
+  const [creatingUser, setCreatingUser] = useState(false);
   
   // Actions & Alerts
   const [actionStatus, setActionStatus] = useState(null);
@@ -64,7 +72,7 @@ export default function AdminDashboardPage() {
     loadAllAdminData();
   }, [loadAllAdminData]);
 
-  // Filtered Teams List (searches team name, code, leader name/email/ID, member 2/3/4 name/ID)
+  // Filtered Teams List
   const filteredTeams = useMemo(() => {
     return teams.filter((t) => {
       if (teamFilter === "confirmed" && !t.confirmed) return false;
@@ -138,6 +146,73 @@ export default function AdminDashboardPage() {
   // Action Handlers
   // ==========================================
 
+  // Create New Staff User Directly
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    if (!newUserForm.name.trim() || !newUserForm.email.trim()) {
+      setActionStatus({ type: "error", text: "Name and email are required to create a user." });
+      return;
+    }
+
+    setCreatingUser(true);
+    try {
+      const created = await apiClient.post("/api/admin/users", {
+        name: newUserForm.name.trim(),
+        email: newUserForm.email.trim().toLowerCase(),
+        role: newUserForm.role,
+        password: newUserForm.password || "codeshield2026",
+      });
+
+      setUsersList((prev) => [created, ...prev]);
+      setIsAddUserModalOpen(false);
+      setNewUserForm({
+        name: "",
+        email: "",
+        role: "judge",
+        password: "codeshield2026",
+      });
+
+      setActionStatus({
+        type: "success",
+        text: `Created user ${created.name} (${created.email}) as [${created.role.toUpperCase()}].`,
+      });
+
+      // Refresh telemetry counts
+      apiClient.get("/api/admin/stats").then((res) => res && setStats(res)).catch(() => {});
+    } catch (err) {
+      setActionStatus({
+        type: "error",
+        text: err?.message || "Failed to create user in database.",
+      });
+    } finally {
+      setCreatingUser(false);
+    }
+  };
+
+  // Delete Staff User
+  const handleDeleteUser = async (userId, userName, userEmail) => {
+    if (!window.confirm(`Are you sure you want to permanently delete staff user '${userName}' (${userEmail})?`)) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(`/api/admin/users/${userId}`);
+      setUsersList((prev) => prev.filter((u) => u.id !== userId));
+
+      setActionStatus({
+        type: "success",
+        text: `User '${userName}' (${userEmail}) was deleted.`,
+      });
+
+      apiClient.get("/api/admin/stats").then((res) => res && setStats(res)).catch(() => {});
+    } catch (err) {
+      setActionStatus({
+        type: "error",
+        text: err?.message || "Failed to delete user.",
+      });
+    }
+  };
+
   // Instant User Role Promotion / Demotion
   const handleUpdateUserRole = async (userId, currentRole, newRole) => {
     if (currentRole === newRole) return;
@@ -191,7 +266,6 @@ export default function AdminDashboardPage() {
         setSelectedTeamForDetails((prev) => ({ ...prev, ...updated }));
       }
 
-      // Refresh telemetry stats
       const newStats = await apiClient.get("/api/admin/stats").catch(() => null);
       if (newStats) setStats(newStats);
 
@@ -275,7 +349,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Download CSV helper using apiClient.downloadFile
+  // Download CSV helper
   const handleDownloadCsv = async (endpoint, defaultFilename) => {
     setDownloadingExport(defaultFilename);
     try {
@@ -306,7 +380,6 @@ export default function AdminDashboardPage() {
             </p>
           </div>
 
-          {/* Quick Refresh & Stats Badge */}
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -371,7 +444,6 @@ export default function AdminDashboardPage() {
         {/* TAB 1: OVERVIEW & TELEMETRY */}
         {activeTab === "overview" && (
           <div className="space-y-6">
-            {/* Telemetry Metric Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div className="p-4 border border-hairline bg-panel">
                 <div className="text-[10px] text-muted uppercase">// TOTAL TEAMS</div>
@@ -410,7 +482,6 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Problem Statement Distribution */}
             {stats?.track_distribution && stats.track_distribution.length > 0 && (
               <div className="border border-hairline bg-panel p-5">
                 <div className="text-xs font-semibold text-cyan uppercase mb-4">
@@ -438,7 +509,6 @@ export default function AdminDashboardPage() {
         {/* TAB 2: TEAMS & ATTENDANCE & MEMBER INSPECTION */}
         {activeTab === "teams" && (
           <div className="space-y-4">
-            {/* Filter Bar */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 border border-hairline bg-panel">
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <input
@@ -478,7 +548,6 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Teams Table */}
             <div className="border border-hairline bg-panel overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -515,7 +584,6 @@ export default function AdminDashboardPage() {
                           </button>
                         </td>
 
-                        {/* Leader Details Personal */}
                         <td className="p-3">
                           <div className="font-semibold text-content flex items-center gap-1.5">
                             <span>{team.leader_name}</span>
@@ -532,7 +600,6 @@ export default function AdminDashboardPage() {
                           )}
                         </td>
 
-                        {/* Members Personal Details */}
                         <td className="p-3 text-subtle text-[11px] space-y-1">
                           <div className="flex items-center gap-1.5">
                             <span className="text-cyan font-bold">•</span>
@@ -557,7 +624,6 @@ export default function AdminDashboardPage() {
                           )}
                         </td>
 
-                        {/* Confirmation Toggle */}
                         <td className="p-3 text-center">
                           <button
                             type="button"
@@ -572,7 +638,6 @@ export default function AdminDashboardPage() {
                           </button>
                         </td>
 
-                        {/* Day 1 Attendance Toggle */}
                         <td className="p-3 text-center">
                           <button
                             type="button"
@@ -587,7 +652,6 @@ export default function AdminDashboardPage() {
                           </button>
                         </td>
 
-                        {/* Day 2 Attendance Toggle */}
                         <td className="p-3 text-center">
                           <button
                             type="button"
@@ -602,7 +666,6 @@ export default function AdminDashboardPage() {
                           </button>
                         </td>
 
-                        {/* Delete Action */}
                         <td className="p-3 text-right">
                           <button
                             type="button"
@@ -621,30 +684,40 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 3: USER & ROLE MANAGEMENT (INSTANT PROMOTE / DEMOTE) */}
+        {/* TAB 3: USER & ROLE MANAGEMENT (INSTANT PROMOTE / DEMOTE & DIRECT USER ADDITION) */}
         {activeTab === "users" && (
           <div className="space-y-4">
             {/* Header & Quick Action info */}
-            <div className="p-4 border border-cyan/40 bg-cyan/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="p-4 border border-cyan/40 bg-cyan/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-bold text-cyan uppercase flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan" />
-                  // INSTANT RBAC ROLE PROMOTION & DEMOTION
+                  // RBAC STAFF MANAGEMENT & DIRECT USER PROVISIONING
                 </div>
                 <p className="text-[11px] text-muted mt-0.5">
-                  Directly promote or demote registered staff between <strong className="text-cyan">ADMIN</strong> and <strong className="text-amber">JUDGE</strong> roles. Changes update Supabase DB immediately with zero lag.
+                  Directly provision new staff accounts or change assigned roles between <strong className="text-cyan">ADMIN</strong> and <strong className="text-amber">JUDGE</strong>.
                 </p>
               </div>
 
-              {/* User search input */}
-              <div className="w-full sm:w-64">
-                <input
-                  type="text"
-                  value={userSearchQuery}
-                  onChange={(e) => setUserSearchQuery(e.target.value)}
-                  placeholder="Search user name, email, role..."
-                  className="px-3 py-1.5 text-xs bg-base border border-hairline text-content focus:border-cyan focus:outline-none w-full font-mono"
-                />
+              {/* Actions: Add User Button & Search */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddUserModalOpen(true)}
+                  className="px-3.5 py-1.5 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover flex items-center gap-1.5 transition-colors shadow-sm"
+                >
+                  <span className="text-sm leading-none">+</span> Add Staff User
+                </button>
+
+                <div className="w-full sm:w-56">
+                  <input
+                    type="text"
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    placeholder="Search name, email, role..."
+                    className="px-3 py-1.5 text-xs bg-base border border-hairline text-content focus:border-cyan focus:outline-none w-full font-mono"
+                  />
+                </div>
               </div>
             </div>
 
@@ -697,10 +770,18 @@ export default function AdminDashboardPage() {
                                   ? "border-cyan text-cyan bg-cyan/10"
                                   : u.role === "judge"
                                   ? "border-amber text-amber bg-amber/10"
-                                  : "border-emerald-400 text-emerald-400 bg-emerald-950/20"
+                                  : u.role === "leader"
+                                  ? "border-emerald-400 text-emerald-400 bg-emerald-950/20"
+                                  : "border-sky-400 text-sky-400 bg-sky-950/20"
                               }`}
                             >
-                              {u.role ? u.role.toUpperCase() : "UNKNOWN"}
+                              {u.role === "leader"
+                                ? "TEAM LEADER"
+                                : u.role === "member"
+                                ? "TEAM MEMBER"
+                                : u.role
+                                ? u.role.toUpperCase()
+                                : "UNKNOWN"}
                             </span>
                           </td>
 
@@ -714,31 +795,46 @@ export default function AdminDashboardPage() {
                             >
                               <option value="admin">ADMIN</option>
                               <option value="judge">JUDGE</option>
+                              <option value="leader">TEAM LEADER</option>
+                              <option value="member">TEAM MEMBER</option>
                             </select>
                           </td>
 
-                          {/* Quick 1-Click Promote / Demote Action */}
+                          {/* Quick 1-Click Promote / Demote / Delete Action */}
                           <td className="p-3 text-right">
-                            {u.role === "judge" ? (
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => handleUpdateUserRole(u.id, u.role, "admin")}
-                                className="px-3 py-1 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50"
-                              >
-                                {isUpdating ? "Updating..." : "▲ Promote to Admin"}
-                              </button>
-                            ) : u.role === "admin" ? (
-                              <button
-                                type="button"
-                                disabled={isUpdating || isSelf}
-                                onClick={() => handleUpdateUserRole(u.id, u.role, "judge")}
-                                title={isSelf ? "Cannot demote your own account" : "Demote to Judge"}
-                                className="px-3 py-1 text-xs text-amber border border-amber/60 hover:bg-amber/10 transition-colors disabled:opacity-40"
-                              >
-                                {isUpdating ? "Updating..." : "▼ Demote to Judge"}
-                              </button>
-                            ) : null}
+                            <div className="flex items-center justify-end gap-2">
+                              {u.role !== "admin" ? (
+                                <button
+                                  type="button"
+                                  disabled={isUpdating}
+                                  onClick={() => handleUpdateUserRole(u.id, u.role, "admin")}
+                                  className="px-3 py-1 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50"
+                                >
+                                  {isUpdating ? "Updating..." : "▲ Make Admin"}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={isUpdating || isSelf}
+                                  onClick={() => handleUpdateUserRole(u.id, u.role, "judge")}
+                                  title={isSelf ? "Cannot demote your own account" : "Demote to Judge"}
+                                  className="px-3 py-1 text-xs text-amber border border-amber/60 hover:bg-amber/10 transition-colors disabled:opacity-40"
+                                >
+                                  {isUpdating ? "Updating..." : "▼ Set Judge"}
+                                </button>
+                              )}
+
+                              {!isSelf && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteUser(u.id, u.name, u.email)}
+                                  className="px-2 py-1 text-[11px] text-rose-400 hover:text-rose-300 border border-rose-500/30 hover:bg-rose-950/30 transition-colors ml-1"
+                                  title="Delete user"
+                                >
+                                  &times;
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -890,7 +986,6 @@ export default function AdminDashboardPage() {
         {/* TAB 6: EXPORTS & LOAD BALANCING */}
         {activeTab === "exports" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* CSV Exports */}
             <div className="p-6 border border-hairline bg-panel space-y-4">
               <div className="text-xs font-bold text-cyan uppercase">
                 // DATA EXPORT UTILITIES (CSV)
@@ -926,7 +1021,6 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Dynamic Judge Load Balancing Dispatch */}
             <div className="p-6 border border-hairline bg-panel space-y-4">
               <div className="text-xs font-bold text-cyan uppercase flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400" />
@@ -954,7 +1048,6 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
 
-              {/* Load Balancing Result Box */}
               {rebalanceResult && (
                 <div className="mt-4 p-3 border border-cyan/40 bg-base text-xs space-y-2">
                   <div className="text-emerald-400 font-bold">&gt; {rebalanceResult.message}</div>
@@ -968,11 +1061,149 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
+      {/* CREATE NEW STAFF USER MODAL */}
+      {isAddUserModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-panel border border-cyan/40 w-full max-w-md p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-hairline pb-3">
+              <div>
+                <div className="text-xs font-bold text-cyan uppercase">// PROVISION NEW USER</div>
+                <h2 className="text-xl font-bold text-content mt-1">Add Staff Account</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddUserModalOpen(false)}
+                className="text-muted hover:text-content text-xl font-bold px-2 py-1"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUser} className="space-y-4 text-xs font-mono">
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase text-subtle font-semibold block">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newUserForm.name}
+                  onChange={(e) => setNewUserForm({ ...newUserForm, name: e.target.value })}
+                  placeholder="e.g. Dr. Jane Doe"
+                  className="w-full px-3 py-2 bg-base border border-hairline text-content focus:border-cyan focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase text-subtle font-semibold block">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={newUserForm.email}
+                  onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                  placeholder="e.g. judge@gmail.com or staff@bitsathy.ac.in"
+                  className="w-full px-3 py-2 bg-base border border-hairline text-content focus:border-cyan focus:outline-none"
+                />
+                <span className="text-[10px] text-muted">
+                  * Can sign in using Google OAuth or Password.
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase text-subtle font-semibold block">
+                  Assigned User Role
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewUserForm({ ...newUserForm, role: "judge" })}
+                    className={`py-2 px-3 border text-center font-bold text-xs transition-colors ${
+                      newUserForm.role === "judge"
+                        ? "border-amber bg-amber/10 text-amber"
+                        : "border-hairline bg-base text-muted hover:text-content"
+                    }`}
+                  >
+                    JUDGE
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewUserForm({ ...newUserForm, role: "admin" })}
+                    className={`py-2 px-3 border text-center font-bold text-xs transition-colors ${
+                      newUserForm.role === "admin"
+                        ? "border-cyan bg-cyan/10 text-cyan"
+                        : "border-hairline bg-base text-muted hover:text-content"
+                    }`}
+                  >
+                    ADMIN
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewUserForm({ ...newUserForm, role: "leader" })}
+                    className={`py-2 px-3 border text-center font-bold text-xs transition-colors ${
+                      newUserForm.role === "leader"
+                        ? "border-emerald-500 bg-emerald-950/30 text-emerald-400"
+                        : "border-hairline bg-base text-muted hover:text-content"
+                    }`}
+                  >
+                    TEAM LEADER
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewUserForm({ ...newUserForm, role: "member" })}
+                    className={`py-2 px-3 border text-center font-bold text-xs transition-colors ${
+                      newUserForm.role === "member"
+                        ? "border-sky-500 bg-sky-950/30 text-sky-400"
+                        : "border-hairline bg-base text-muted hover:text-content"
+                    }`}
+                  >
+                    TEAM MEMBER
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase text-subtle font-semibold block">
+                  Initial Password
+                </label>
+                <input
+                  type="text"
+                  value={newUserForm.password}
+                  onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                  placeholder="codeshield2026"
+                  className="w-full px-3 py-2 bg-base border border-hairline text-content focus:border-cyan focus:outline-none"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3 border-t border-hairline">
+                <button
+                  type="button"
+                  onClick={() => setIsAddUserModalOpen(false)}
+                  className="px-4 py-2 border border-hairline text-muted hover:text-content"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingUser}
+                  className="px-5 py-2 font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {creatingUser ? "Creating..." : "✓ Create Staff Account"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* TEAM MEMBER ROSTER INSPECTOR MODAL */}
       {selectedTeamForDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-panel border border-hairline w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 space-y-6 shadow-2xl">
-            {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-hairline pb-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -1005,7 +1236,6 @@ export default function AdminDashboardPage() {
               </button>
             </div>
 
-            {/* Attendance & Confirmation Controls inside modal */}
             <div className="p-3 border border-hairline bg-base/60 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2">
                 <span className="text-muted">Attendance:</span>
@@ -1066,12 +1296,10 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Individual Member Cards Grid */}
             <div className="space-y-4">
               <div className="text-xs font-semibold text-cyan uppercase">// TEAM MEMBER DOSSIERS</div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 1. Team Leader Card */}
                 <div className="p-4 border-2 border-cyan/40 bg-panel space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold px-2 py-0.5 bg-cyan text-zinc-950">
@@ -1115,7 +1343,6 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                {/* 2. Member 2 Card */}
                 <div className="p-4 border border-hairline bg-panel space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold px-2 py-0.5 border border-hairline bg-base text-muted">
@@ -1140,7 +1367,6 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                {/* 3. Member 3 Card (if present) */}
                 {selectedTeamForDetails.member3_name && (
                   <div className="p-4 border border-hairline bg-panel space-y-3">
                     <div className="flex items-center justify-between">
@@ -1167,7 +1393,6 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
 
-                {/* 4. Member 4 Card (if present) */}
                 {selectedTeamForDetails.member4_name && (
                   <div className="p-4 border border-hairline bg-panel space-y-3">
                     <div className="flex items-center justify-between">
@@ -1196,7 +1421,6 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="pt-4 border-t border-hairline flex justify-end">
               <button
                 type="button"

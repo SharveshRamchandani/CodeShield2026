@@ -138,21 +138,61 @@ def get_current_user(
 
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
-            # 1. Handle Team Leader token (type='team' or role='leader')
-            if token_type == "team" or token_role == "leader":
-                if user_id:
+            # 1. Check users table
+            user = None
+            if user_id:
+                try:
+                    cur.execute(
+                        "SELECT id, email, role, name, created_at FROM users WHERE id = %s;",
+                        (user_id,),
+                    )
+                    user = cur.fetchone()
+                except psycopg2.Error:
+                    db.rollback()
+
+            if not user and email:
+                cur.execute(
+                    "SELECT id, email, role, name, created_at FROM users WHERE LOWER(email) = LOWER(%s);",
+                    (email,),
+                )
+                user = cur.fetchone()
+
+            if user:
+                user_dict = dict(user)
+                # Check for any linked team record
+                cur.execute(
+                    "SELECT id, team_code, team_name, confirmed FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
+                    (user_dict["email"],),
+                )
+                linked_team = cur.fetchone()
+
+                return {
+                    "id": str(user_dict["id"]),
+                    "email": user_dict["email"],
+                    "role": user_dict["role"],
+                    "name": user_dict["name"],
+                    "type": "staff" if user_dict["role"] in ["admin", "judge"] else "team",
+                    "team_id": str(linked_team["id"]) if linked_team else str(user_dict["id"]),
+                    "team_code": linked_team.get("team_code") if linked_team else None,
+                    "team_name": linked_team.get("team_name") if linked_team else None,
+                    "confirmed": linked_team.get("confirmed", True) if linked_team else True,
+                    "created_at": user_dict.get("created_at"),
+                }
+
+            # 2. Check teams table (for teams registered via public registration)
+            team = None
+            if user_id:
+                try:
                     cur.execute("SELECT * FROM teams WHERE id = %s;", (user_id,))
-                else:
-                    cur.execute("SELECT * FROM teams WHERE LOWER(leader_email) = LOWER(%s);", (email,))
+                    team = cur.fetchone()
+                except psycopg2.Error:
+                    db.rollback()
+
+            if not team and email:
+                cur.execute("SELECT * FROM teams WHERE LOWER(leader_email) = LOWER(%s);", (email,))
                 team = cur.fetchone()
 
-                if not team:
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Team account associated with this token no longer exists",
-                        headers={"WWW-Authenticate": "Bearer"},
-                    )
-
+            if team:
                 team_dict = dict(team)
                 return {
                     "id": str(team_dict["id"]),
@@ -166,35 +206,11 @@ def get_current_user(
                     "created_at": team_dict.get("created_at"),
                 }
 
-            # 2. Handle Staff token (type='staff' or role in ['admin', 'judge'])
-            if user_id:
-                cur.execute(
-                    "SELECT id, email, role, name, created_at FROM users WHERE id = %s;",
-                    (user_id,),
-                )
-            else:
-                cur.execute(
-                    "SELECT id, email, role, name, created_at FROM users WHERE LOWER(email) = LOWER(%s);",
-                    (email,),
-                )
-            user = cur.fetchone()
-
-            if not user:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Staff user account associated with this token no longer exists",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-            user_dict = dict(user)
-            return {
-                "id": str(user_dict["id"]),
-                "email": user_dict["email"],
-                "role": user_dict["role"],
-                "name": user_dict["name"],
-                "type": "staff",
-                "created_at": user_dict.get("created_at"),
-            }
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User or team account associated with this token no longer exists",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     except HTTPException:
         raise
     except psycopg2.Error as db_err:

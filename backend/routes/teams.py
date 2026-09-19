@@ -14,7 +14,7 @@ from models.schemas import (
     TeamConfirmationResponse,
 )
 from database import get_db
-from utils.auth import require_role
+from utils.auth import require_role, get_current_user
 from utils.email import send_confirmation_email
 
 logger = logging.getLogger(__name__)
@@ -263,6 +263,73 @@ def confirm_team(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to confirm team",
+        )
+
+
+@router.get(
+    "/mine",
+    status_code=status.HTTP_200_OK,
+    summary="Get team profile for authenticated leader or member",
+)
+def get_my_team_profile(
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """
+    Returns team details, member roster, and problem statement track for the logged-in user.
+    """
+    email = current_user["email"].strip().lower()
+    team_id = current_user.get("team_id")
+
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # Query by team_id or leader email
+            cur.execute(
+                """
+                SELECT t.*, ps.code AS problem_code, ps.title AS problem_title, ps.domain AS problem_domain
+                FROM teams t
+                LEFT JOIN problem_statements ps ON t.problem_statement_id = ps.id
+                WHERE t.id = %s OR LOWER(t.leader_email) = LOWER(%s);
+                """,
+                (team_id or "00000000-0000-0000-0000-000000000000", email),
+            )
+            team = cur.fetchone()
+
+            if not team:
+                # Return graceful provisional profile for directly added team leaders
+                return {
+                    "id": str(current_user["id"]),
+                    "team_name": f"{current_user.get('name', 'My')}'s Team",
+                    "team_code": f"CS-{current_user['email'][:4].upper()}",
+                    "team_size": 1,
+                    "leader_name": current_user.get("name", "Team Leader"),
+                    "leader_email": current_user["email"],
+                    "leader_phone": "",
+                    "leader_college_id": "DIRECT-PROV",
+                    "leader_department": "Engineering",
+                    "leader_year": "2026",
+                    "member2_name": None,
+                    "member2_college_id": None,
+                    "member3_name": None,
+                    "member3_college_id": None,
+                    "member4_name": None,
+                    "member4_college_id": None,
+                    "confirmed": True,
+                    "attendance_day1": False,
+                    "attendance_day2": False,
+                    "problem_code": "TBA",
+                    "problem_title": "Track to be chosen",
+                    "problem_domain": "Cybersecurity",
+                }
+
+            res = dict(team)
+            res["id"] = str(res["id"])
+            return res
+    except psycopg2.Error as db_err:
+        logger.error(f"Database error retrieving leader team profile: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve team profile",
         )
 
 

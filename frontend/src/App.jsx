@@ -4,6 +4,7 @@ import { AuthProvider } from "./context/AuthContext";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import ProtectedRoute from "./components/ProtectedRoute";
+import { Analytics } from "@vercel/analytics/react";
 
 import HomePage from "./pages/HomePage";
 import ProblemStatementsPage from "./pages/ProblemStatementsPage";
@@ -12,6 +13,7 @@ import ConfirmationPage from "./pages/ConfirmationPage";
 import LoginPage from "./pages/LoginPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import JudgePage from "./pages/JudgePage";
+import TeamDashboardPage from "./pages/TeamDashboardPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import StubPage from "./pages/StubPage";
 
@@ -41,16 +43,12 @@ export default function App() {
                 }
               />
 
-              {/* Protected Team Leader Dashboard Route */}
+              {/* Protected Team Leader & Member Dashboard Route */}
               <Route
                 path="/dashboard"
                 element={
-                  <ProtectedRoute allowedRoles={["leader"]}>
-                    <StubPage
-                      title="Team Leader Dashboard"
-                      description="Welcome Team Leader! This workspace is protected and authenticated specifically for registered team leaders to submit project deliverables, view team details, and check evaluations."
-                      statusTag="Protected // Role: leader"
-                    />
+                  <ProtectedRoute allowedRoles={["leader", "member"]}>
+                    <TeamDashboardPage />
                   </ProtectedRoute>
                 }
               />
@@ -89,6 +87,7 @@ export default function App() {
             </Routes>
           </main>
           <Footer />
+          <Analytics />
         </div>
       </AuthProvider>
     </ThemeProvider>

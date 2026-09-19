@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from psycopg2.extras import RealDictCursor
 import psycopg2
@@ -23,19 +24,29 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Authentication"])
 
 
+# =========================================================================
+# Staff Authentication (Admin & Judge)
+# =========================================================================
+
+@router.post(
+    "/staff/login",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Authenticate staff (Admin / Judge) via email and password",
+)
 @router.post(
     "/login",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
-    summary="Authenticate admin/judge user and issue JWT access token",
+    include_in_schema=False,
 )
-def login(
+def staff_login(
     credentials: UserLogin,
     db=Depends(get_db),
 ):
     """
-    Validates user email and password against the users database table.
-    Issues a signed JWT access token containing role, user ID, email, and name.
+    Validates staff credentials against the users table.
+    Issues a shared JWT access token with type='staff'.
     """
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
@@ -65,7 +76,7 @@ def login(
                 "email": user["email"],
                 "role": user["role"],
                 "name": user["name"],
-                "type": "user",
+                "type": "staff",
             }
             access_token = create_access_token(data=token_data)
 
@@ -74,35 +85,174 @@ def login(
                 token_type="bearer",
                 role=user["role"],
                 name=user["name"],
+                type="staff",
             )
     except HTTPException:
         raise
     except psycopg2.Error as db_err:
-        logger.error(f"Database error during login: {db_err}")
+        logger.error(f"Database error during staff login: {db_err}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error during login",
-        )
-    except Exception as exc:
-        logger.error(f"Unexpected error during login: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal server error occurred",
+            detail="Database error during authentication",
         )
 
+
+# =========================================================================
+# Unified Google Sign-In (Staff, Team Leader, or Pre-Registration)
+# =========================================================================
+
+@router.post(
+    "/google",
+    response_model=GoogleAuthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Unified Google Sign-In (Auto-routes Staff, Team Leader, or Registration)",
+)
+@router.post(
+    "/staff/google",
+    response_model=GoogleAuthResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+@router.post(
+    "/team/google",
+    response_model=GoogleAuthResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+def unified_google_login(
+    auth_req: GoogleAuthRequest,
+    db=Depends(get_db),
+):
+    """
+    Unified Google Identity Services authentication endpoint.
+    1. Verifies Google token, extracts email & name.
+    2. Check `users` table: If row exists, issue type='staff' token with user's role (admin/judge).
+       (Staff accounts are NEVER auto-created; only manually seeded accounts have staff roles).
+    3. If not in `users`:
+       - Enforces @bitsathy.ac.in domain check. Non-@bitsathy emails are rejected with 403.
+       - Checks `teams` table by leader_email:
+         - If team exists & confirmed: issue type='team' token, role='leader'.
+         - If team exists & unconfirmed: confirms team and issues type='team' token, role='leader'.
+         - If no team exists: returns needs_registration=True with prefilled email & name.
+    """
+    payload = verify_google_token(auth_req.credential)
+    google_email = payload["email"].strip().lower()
+    google_name = payload.get("name", "").strip()
+
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # Step 1: Check users table for staff (admin / judge)
+            cur.execute(
+                "SELECT id, email, role, name FROM users WHERE LOWER(email) = LOWER(%s);",
+                (google_email,),
+            )
+            staff_user = cur.fetchone()
+
+            if staff_user:
+                token_data = {
+                    "sub": str(staff_user["id"]),
+                    "email": staff_user["email"],
+                    "role": staff_user["role"],
+                    "name": staff_user["name"],
+                    "type": "staff",
+                }
+                access_token = create_access_token(data=token_data)
+                return GoogleAuthResponse(
+                    access_token=access_token,
+                    token_type="bearer",
+                    role=staff_user["role"],
+                    name=staff_user["name"],
+                    type="staff",
+                    needs_registration=False,
+                    email=staff_user["email"],
+                )
+
+            # Step 2: Not in users table -> verify @bitsathy.ac.in domain for participants
+            if not google_email.endswith("@bitsathy.ac.in"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only BIT Sathy college accounts (@bitsathy.ac.in) can register as participants.",
+                )
+
+            # Step 3: Check teams table by leader_email
+            cur.execute(
+                "SELECT * FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
+                (google_email,),
+            )
+            team = cur.fetchone()
+
+            if not team:
+                return GoogleAuthResponse(
+                    needs_registration=True,
+                    email=google_email,
+                    name=google_name,
+                )
+
+            # Auto-confirm unconfirmed team since Google verified email ownership
+            if not team["confirmed"]:
+                cur.execute(
+                    """
+                    UPDATE teams
+                    SET confirmed = TRUE, confirmation_token = NULL
+                    WHERE id = %s
+                    RETURNING *;
+                    """,
+                    (team["id"],),
+                )
+                team = cur.fetchone()
+                db.commit()
+
+            token_data = {
+                "sub": str(team["id"]),
+                "email": team["leader_email"],
+                "role": "leader",
+                "name": team["leader_name"],
+                "team_code": team.get("team_code"),
+                "team_name": team.get("team_name"),
+                "type": "team",
+            }
+            access_token = create_access_token(data=token_data)
+
+            return GoogleAuthResponse(
+                access_token=access_token,
+                token_type="bearer",
+                role="leader",
+                name=team["leader_name"],
+                team_code=team.get("team_code"),
+                team_name=team.get("team_name"),
+                type="team",
+                needs_registration=False,
+                email=team["leader_email"],
+            )
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error during Google authentication: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error during Google authentication",
+        )
+
+
+
+# =========================================================================
+# Team Leader Authentication (Leader Password Login)
+# =========================================================================
 
 @router.post(
     "/team/login",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
-    summary="Authenticate team leader via password/credentials",
+    summary="Authenticate team leader via email and password",
 )
 def team_login(
     credentials: UserLogin,
     db=Depends(get_db),
 ):
     """
-    Authenticates team leader credentials and issues a team JWT token.
+    Authenticates team leader credentials and issues a shared JWT access token with type='team'.
     """
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
@@ -130,8 +280,8 @@ def team_login(
                 "email": team["leader_email"],
                 "role": "leader",
                 "name": team["leader_name"],
-                "team_code": team["team_code"],
-                "team_name": team["team_name"],
+                "team_code": team.get("team_code"),
+                "team_name": team.get("team_name"),
                 "type": "team",
             }
             access_token = create_access_token(data=token_data)
@@ -141,8 +291,9 @@ def team_login(
                 token_type="bearer",
                 role="leader",
                 name=team["leader_name"],
-                team_code=team["team_code"],
-                team_name=team["team_name"],
+                team_code=team.get("team_code"),
+                team_name=team.get("team_name"),
+                type="team",
             )
     except HTTPException:
         raise
@@ -154,101 +305,22 @@ def team_login(
         )
 
 
-@router.post(
-    "/team/google",
-    response_model=GoogleAuthResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Authenticate team leader via Google Identity Services (@bitsathy.ac.in)",
-)
-def team_google_login(
-    auth_req: GoogleAuthRequest,
-    db=Depends(get_db),
-):
-    """
-    Validates Google ID token for @bitsathy.ac.in accounts.
-    - If team exists & confirmed: issues JWT token.
-    - If team exists & unconfirmed: confirms team and issues JWT token.
-    - If team does not exist: returns needs_registration=True with prefilled email & name.
-    """
-    google_payload = verify_google_token(auth_req.credential)
-    google_email = google_payload["email"].strip().lower()
-    google_name = google_payload.get("name", "").strip()
-
-    try:
-        with db.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                "SELECT * FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
-                (google_email,),
-            )
-            team = cur.fetchone()
-
-            if not team:
-                # User has not registered a team yet
-                return GoogleAuthResponse(
-                    needs_registration=True,
-                    email=google_email,
-                    name=google_name,
-                )
-
-            # If team exists but is unconfirmed, verify & confirm now
-            if not team["confirmed"]:
-                cur.execute(
-                    """
-                    UPDATE teams
-                    SET confirmed = TRUE, confirmation_token = NULL
-                    WHERE id = %s
-                    RETURNING *;
-                    """,
-                    (team["id"],),
-                )
-                team = cur.fetchone()
-                db.commit()
-
-            # Issue team leader JWT token
-            token_data = {
-                "sub": str(team["id"]),
-                "email": team["leader_email"],
-                "role": "leader",
-                "name": team["leader_name"],
-                "team_code": team["team_code"],
-                "team_name": team["team_name"],
-                "type": "team",
-            }
-            access_token = create_access_token(data=token_data)
-
-            return GoogleAuthResponse(
-                access_token=access_token,
-                token_type="bearer",
-                role="leader",
-                name=team["leader_name"],
-                team_code=team["team_code"],
-                team_name=team["team_name"],
-                needs_registration=False,
-                email=team["leader_email"],
-            )
-    except HTTPException:
-        db.rollback()
-        raise
-    except psycopg2.Error as db_err:
-        db.rollback()
-        logger.error(f"Database error during Google team login: {db_err}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error during Google authentication",
-        )
+# =========================================================================
+# Shared Profile Endpoint
+# =========================================================================
 
 
 @router.get(
     "/me",
     response_model=UserOut,
     status_code=status.HTTP_200_OK,
-    summary="Get authenticated user/leader profile",
+    summary="Get authenticated user/leader profile (Any Role)",
 )
 def get_authenticated_user_profile(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Returns current authenticated user details extracted from verified JWT token.
+    Returns current authenticated profile for staff (admin/judge) and team leaders.
     """
     return UserOut(
         id=str(current_user["id"]),

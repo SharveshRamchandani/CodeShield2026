@@ -12,7 +12,7 @@ from google.auth.transport import requests as google_requests
 
 from database import get_db
 
-# Password hashing context
+# Password hashing context (bcrypt)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT configuration
@@ -42,8 +42,16 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
     """
-    Generate signed JWT access token.
-    data payload expects at least 'sub' (user_id/team_id or email) and 'role'.
+    THE single shared JWT-issuing function across ALL authentication paths:
+    (Staff Password, Staff Google, Team Password, Team Google).
+    
+    Expected claims in data:
+      - sub: user_id or team_id (UUID string)
+      - email: user or leader email
+      - role: 'admin' | 'judge' | 'leader'
+      - type: 'staff' | 'team'
+      - name: display name
+      - optional: team_code, team_name
     """
     to_encode = data.copy()
     if expires_delta:
@@ -72,7 +80,9 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 def verify_google_token(id_token_str: str) -> Dict[str, Any]:
     """
     Verifies a Google ID token from Google Identity Services (GIS).
-    Enforces that email is verified and strictly ends with @bitsathy.ac.in.
+    Validates token signature and audience.
+    Returns decoded token payload dictionary.
+    Domain checks (@bitsathy.ac.in) are intentionally handled by specific callers.
     """
     try:
         payload = id_token.verify_oauth2_token(
@@ -87,19 +97,10 @@ def verify_google_token(id_token_str: str) -> Dict[str, Any]:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    email = payload.get("email", "")
-    email_verified = payload.get("email_verified", False)
-
-    if not email_verified:
+    if not payload.get("email_verified", False):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Google email address is not verified.",
-        )
-
-    if not email.lower().endswith("@bitsathy.ac.in"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only BIT Sathy college accounts (@bitsathy.ac.in) are allowed.",
         )
 
     return payload
@@ -111,6 +112,8 @@ def get_current_user(
 ) -> Dict[str, Any]:
     """
     FastAPI security dependency to authenticate and fetch current user/leader from JWT token.
+    Decodes token, inspects 'type' claim ('staff' vs 'team'), and queries the appropriate table.
+    Returns normalized dictionary: {id, role, name, email, type, ...}.
     """
     if not credentials or not credentials.credentials:
         raise HTTPException(
@@ -135,7 +138,7 @@ def get_current_user(
 
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
-            # Handle Team Leader token
+            # 1. Handle Team Leader token (type='team' or role='leader')
             if token_type == "team" or token_role == "leader":
                 if user_id:
                     cur.execute("SELECT * FROM teams WHERE id = %s;", (user_id,))
@@ -151,19 +154,19 @@ def get_current_user(
                     )
 
                 team_dict = dict(team)
-                team_dict["id"] = str(team_dict["id"])
                 return {
-                    "id": team_dict["id"],
+                    "id": str(team_dict["id"]),
                     "email": team_dict["leader_email"],
                     "role": "leader",
                     "name": team_dict["leader_name"],
-                    "team_code": team_dict["team_code"],
-                    "team_name": team_dict["team_name"],
-                    "confirmed": team_dict["confirmed"],
+                    "team_code": team_dict.get("team_code"),
+                    "team_name": team_dict.get("team_name"),
+                    "confirmed": team_dict.get("confirmed", False),
+                    "type": "team",
                     "created_at": team_dict.get("created_at"),
                 }
 
-            # Handle User (Admin / Judge) token
+            # 2. Handle Staff token (type='staff' or role in ['admin', 'judge'])
             if user_id:
                 cur.execute(
                     "SELECT id, email, role, name, created_at FROM users WHERE id = %s;",
@@ -171,7 +174,7 @@ def get_current_user(
                 )
             else:
                 cur.execute(
-                    "SELECT id, email, role, name, created_at FROM users WHERE email = %s;",
+                    "SELECT id, email, role, name, created_at FROM users WHERE LOWER(email) = LOWER(%s);",
                     (email,),
                 )
             user = cur.fetchone()
@@ -179,13 +182,19 @@ def get_current_user(
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User account associated with this token no longer exists",
+                    detail="Staff user account associated with this token no longer exists",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
 
             user_dict = dict(user)
-            user_dict["id"] = str(user_dict["id"])
-            return user_dict
+            return {
+                "id": str(user_dict["id"]),
+                "email": user_dict["email"],
+                "role": user_dict["role"],
+                "name": user_dict["name"],
+                "type": "staff",
+                "created_at": user_dict.get("created_at"),
+            }
     except HTTPException:
         raise
     except psycopg2.Error as db_err:
@@ -195,17 +204,17 @@ def get_current_user(
         )
 
 
-def require_role(role: str):
+def require_role(*roles: str):
     """
     Dependency factory for Role-Based Access Control (RBAC).
-    Enforces that current_user['role'] matches the specified role (e.g. 'admin', 'judge', or 'leader').
+    Supports single or multiple roles (e.g. require_role("admin") or require_role("admin", "judge")).
     """
     def role_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
         user_role = current_user.get("role")
-        if user_role != role:
+        if user_role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access forbidden: requires '{role}' role (current: '{user_role}')",
+                detail=f"Access forbidden: requires one of {list(roles)} role(s) (current: '{user_role}')",
             )
         return current_user
 

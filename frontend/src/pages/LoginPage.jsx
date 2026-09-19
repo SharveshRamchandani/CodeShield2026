@@ -8,7 +8,7 @@ const GOOGLE_CLIENT_ID =
   "317519964205-ci2ugcntg0hbkq8qgcbhifjhmt5tgsoo.apps.googleusercontent.com";
 
 export default function LoginPage() {
-  const [activeTab, setActiveTab] = useState("team"); // 'team' | 'staff'
+  const [activeTab, setActiveTab] = useState("staff"); // 'staff' | 'team'
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -21,18 +21,34 @@ export default function LoginPage() {
 
   const from = location.state?.from?.pathname;
 
-  // Handle GIS Response
+  const navigateUserByRole = useCallback(
+    (role) => {
+      if (from) {
+        navigate(from, { replace: true });
+      } else if (role === "admin") {
+        navigate("/admin", { replace: true });
+      } else if (role === "judge") {
+        navigate("/judge", { replace: true });
+      } else if (role === "leader") {
+        navigate("/dashboard", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
+    },
+    [from, navigate]
+  );
+
+  // Handle GIS Response (Unified auto-routing)
   const handleGoogleResponse = useCallback(
     async (response) => {
       setErrorMessage("");
       setSubmitting(true);
       try {
-        const res = await apiClient.post("/api/auth/team/google", {
+        const res = await apiClient.post("/api/auth/google", {
           credential: response.credential,
         });
 
         if (res.needs_registration) {
-          // Redirect to /register with prefilled email & name
           navigate("/register", {
             state: {
               prefillEmail: res.email,
@@ -43,29 +59,25 @@ export default function LoginPage() {
         }
 
         if (res.access_token) {
-          loginWithToken(res);
-          if (from) {
-            navigate(from, { replace: true });
-          } else {
-            navigate("/problem-statements", { replace: true });
-          }
+          await loginWithToken(res);
+          navigateUserByRole(res.role);
         }
       } catch (err) {
         setErrorMessage(
           err.message ||
-            "Google sign-in failed. Please ensure you are using your @bitsathy.ac.in account."
+            "Google sign-in failed. Please verify your account and try again."
         );
       } finally {
         setSubmitting(false);
       }
     },
-    [from, navigate, loginWithToken]
+    [loginWithToken, navigateUserByRole, navigate]
   );
 
-  // Initialize Google Identity Services button
-  useEffect(() => {
-    if (activeTab !== "team") return;
 
+  // Initialize Google Identity Services button on tab change
+  useEffect(() => {
+    let timer;
     const initGoogle = () => {
       if (window.google?.accounts?.id && googleBtnRef.current) {
         try {
@@ -75,6 +87,7 @@ export default function LoginPage() {
             auto_select: false,
           });
 
+          googleBtnRef.current.innerHTML = ""; // Clear existing button before re-rendering
           window.google.accounts.id.renderButton(googleBtnRef.current, {
             theme: "filled_black",
             size: "large",
@@ -84,12 +97,12 @@ export default function LoginPage() {
             logo_alignment: "left",
           });
         } catch {
-          // GIS render error handled gracefully
+          // Handled gracefully
         }
       }
     };
 
-    const timer = setTimeout(initGoogle, 200);
+    timer = setTimeout(initGoogle, 150);
     return () => clearTimeout(timer);
   }, [activeTab, handleGoogleResponse]);
 
@@ -104,30 +117,14 @@ export default function LoginPage() {
 
     setSubmitting(true);
     try {
-      if (activeTab === "team") {
-        // Team Leader Login
-        const res = await apiClient.post("/api/auth/team/login", {
-          email: email.trim(),
-          password,
-        });
-        loginWithToken(res);
-        if (from) {
-          navigate(from, { replace: true });
-        } else {
-          navigate("/problem-statements", { replace: true });
-        }
+      if (activeTab === "staff") {
+        // Staff Login (Admin / Judge)
+        const res = await login(email.trim(), password, "staff");
+        navigateUserByRole(res.role);
       } else {
-        // Staff (Admin / Judge) Login
-        const res = await login(email.trim(), password);
-        if (from) {
-          navigate(from, { replace: true });
-        } else if (res.role === "admin") {
-          navigate("/admin", { replace: true });
-        } else if (res.role === "judge") {
-          navigate("/judge", { replace: true });
-        } else {
-          navigate("/", { replace: true });
-        }
+        // Team Leader Login
+        const res = await login(email.trim(), password, "team");
+        navigateUserByRole(res.role || "leader");
       }
     } catch (err) {
       setErrorMessage(
@@ -156,23 +153,18 @@ export default function LoginPage() {
             </div>
           )}
           <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
-            <Link
-              to={
-                user.role === "admin"
-                  ? "/admin"
-                  : user.role === "judge"
-                  ? "/judge"
-                  : "/problem-statements"
-              }
+            <button
+              type="button"
+              onClick={() => navigateUserByRole(user.role)}
               className="px-5 py-2.5 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors"
             >
               &rarr; Go to{" "}
               {user.role === "admin"
-                ? "Admin Dashboard"
+                ? "Admin Portal"
                 : user.role === "judge"
                 ? "Judge Portal"
-                : "Problem Statements"}
-            </Link>
+                : "Team Dashboard"}
+            </button>
           </div>
         </div>
       </div>
@@ -182,19 +174,97 @@ export default function LoginPage() {
   return (
     <div className="w-full min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center px-6 py-16 bg-base text-content font-mono">
       <div className="w-full max-w-md">
-        {/* Header Header */}
+        {/* Header */}
         <div className="mb-6 text-left">
           <div className="text-xs font-semibold text-cyan uppercase mb-2">
             // AUTHORIZED ACCESS PORTAL
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-content">Sign In</h1>
           <p className="text-xs text-muted mt-1">
-            Access CodeShield 2026 for Team Leaders, Judges, and Event Admins.
+            Access CodeShield 2026 across all three authenticated roles.
           </p>
+        </div>
+
+        {/* 3 Roles Showcase */}
+        <div className="grid grid-cols-3 gap-2 mb-6 text-left">
+          <div
+            onClick={() => {
+              setActiveTab("staff");
+              setErrorMessage("");
+            }}
+            className={`p-2.5 border cursor-pointer transition-all ${
+              activeTab === "staff"
+                ? "border-cyan/70 bg-panel"
+                : "border-hairline bg-panel/30 hover:border-hairline/80"
+            }`}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan" />
+              <span className="text-[11px] font-bold text-cyan">ADMIN</span>
+            </div>
+            <div className="text-[10px] text-muted leading-tight">
+              Console, Teams, CSV & Attendance
+            </div>
+          </div>
+
+          <div
+            onClick={() => {
+              setActiveTab("staff");
+              setErrorMessage("");
+            }}
+            className={`p-2.5 border cursor-pointer transition-all ${
+              activeTab === "staff"
+                ? "border-cyan/70 bg-panel"
+                : "border-hairline bg-panel/30 hover:border-hairline/80"
+            }`}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber" />
+              <span className="text-[11px] font-bold text-amber">JUDGE</span>
+            </div>
+            <div className="text-[10px] text-muted leading-tight">
+              Rubric Scoring & Deliverable Reviews
+            </div>
+          </div>
+
+          <div
+            onClick={() => {
+              setActiveTab("team");
+              setErrorMessage("");
+            }}
+            className={`p-2.5 border cursor-pointer transition-all ${
+              activeTab === "team"
+                ? "border-cyan/70 bg-panel"
+                : "border-hairline bg-panel/30 hover:border-hairline/80"
+            }`}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-[11px] font-bold text-emerald-400">LEADER</span>
+            </div>
+            <div className="text-[10px] text-muted leading-tight">
+              Deliverables & Team Submissions
+            </div>
+          </div>
         </div>
 
         {/* Tab Selection */}
         <div className="flex items-center gap-4 border-b border-hairline mb-6 pb-2 text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("staff");
+              setErrorMessage("");
+            }}
+            className={`transition-colors ${
+              activeTab === "staff"
+                ? "text-cyan font-bold border-b-2 border-cyan pb-1"
+                : "text-muted hover:text-content"
+            }`}
+          >
+            [STAFF LOGIN &middot; ADMIN / JUDGE]
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -209,22 +279,8 @@ export default function LoginPage() {
           >
             [TEAM LEADER LOGIN]
           </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab("staff");
-              setErrorMessage("");
-            }}
-            className={`transition-colors ${
-              activeTab === "staff"
-                ? "text-cyan font-bold border-b-2 border-cyan pb-1"
-                : "text-muted hover:text-content"
-            }`}
-          >
-            [ADMIN / JUDGE LOGIN]
-          </button>
         </div>
+
 
         {/* Error Alert Box */}
         {errorMessage && (
@@ -246,14 +302,14 @@ export default function LoginPage() {
                 htmlFor="login-email"
                 className="text-xs uppercase text-subtle font-semibold block"
               >
-                {activeTab === "team" ? "Leader Email Address" : "Staff Email Address"}
+                {activeTab === "staff" ? "Staff Email Address" : "Team Leader Email Address"}
               </label>
               <input
                 id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder={activeTab === "team" ? "leader@bitsathy.ac.in" : "admin@codeshield.org"}
+                placeholder={activeTab === "staff" ? "admin@codeshield.org" : "leader@bitsathy.ac.in"}
                 required
                 disabled={submitting}
                 autoComplete="email"
@@ -292,26 +348,26 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Google Sign In Option for Team Leaders */}
-          {activeTab === "team" && (
-            <div className="pt-4 border-t border-hairline/60 space-y-4">
-              <div className="relative text-center">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-hairline/60" />
-                </div>
-                <span className="relative px-3 bg-panel text-[11px] text-subtle uppercase">
-                  // OR SIGN IN WITH GOOGLE
-                </span>
+          {/* Google Sign In Option for Both Staff and Team */}
+          <div className="pt-4 border-t border-hairline/60 space-y-4">
+            <div className="relative text-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-hairline/60" />
               </div>
-
-              <div className="flex flex-col items-center justify-center pt-1">
-                <div ref={googleBtnRef} className="w-full flex justify-center min-h-[44px]" />
-                <span className="text-[10px] text-subtle mt-2 text-center">
-                  * Restricted to verified @bitsathy.ac.in college accounts
-                </span>
-              </div>
+              <span className="relative px-3 bg-panel text-[11px] text-subtle uppercase">
+                // OR SIGN IN WITH GOOGLE
+              </span>
             </div>
-          )}
+
+            <div className="flex flex-col items-center justify-center pt-1">
+              <div ref={googleBtnRef} className="w-full flex justify-center min-h-[44px]" />
+              <span className="text-[10px] text-subtle mt-2 text-center">
+                {activeTab === "team"
+                  ? "* Restricted to verified @bitsathy.ac.in accounts"
+                  : "* Registered staff email addresses"}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Footer info */}
@@ -322,3 +378,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

@@ -10,7 +10,6 @@ import ProblemStatementsPage from "./pages/ProblemStatementsPage";
 import RegistrationPage from "./pages/RegistrationPage";
 import ConfirmationPage from "./pages/ConfirmationPage";
 import LoginPage from "./pages/LoginPage";
-import JudgePage from "./pages/JudgePage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import StubPage from "./pages/StubPage";
@@ -41,12 +40,30 @@ export default function App() {
                 }
               />
 
+              {/* Protected Team Leader Dashboard Route */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute allowedRoles={["leader"]}>
+                    <StubPage
+                      title="Team Leader Dashboard"
+                      description="Welcome Team Leader! This workspace is protected and authenticated specifically for registered team leaders to submit project deliverables, view team details, and check evaluations."
+                      statusTag="Protected // Role: leader"
+                    />
+                  </ProtectedRoute>
+                }
+              />
+
               {/* Protected Judge Route */}
               <Route
                 path="/judge"
                 element={
-                  <ProtectedRoute requiredRole="judge">
-                    <JudgePage />
+                  <ProtectedRoute allowedRoles={["judge"]}>
+                    <StubPage
+                      title="Judge Evaluation Portal"
+                      description="Welcome Judge! This portal is protected and authenticated specifically for panel judges to review team submissions and record scoring rubric evaluations."
+                      statusTag="Protected // Role: judge"
+                    />
                   </ProtectedRoute>
                 }
               />
@@ -55,7 +72,7 @@ export default function App() {
               <Route
                 path="/admin"
                 element={
-                  <ProtectedRoute requiredRole="admin">
+                  <ProtectedRoute allowedRoles={["admin"]}>
                     <AdminDashboardPage />
                   </ProtectedRoute>
                 }
@@ -80,3 +97,4 @@ export default function App() {
     </ThemeProvider>
   );
 }
+

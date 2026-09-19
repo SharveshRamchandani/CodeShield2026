@@ -1,7 +1,7 @@
 import { Navigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-export default function ProtectedRoute({ children, requiredRole }) {
+export default function ProtectedRoute({ children, allowedRoles, requiredRole }) {
   const { user, isAuthenticated, loading, logout } = useAuth();
   const location = useLocation();
 
@@ -20,7 +20,17 @@ export default function ProtectedRoute({ children, requiredRole }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (requiredRole && user?.role !== requiredRole) {
+  // Normalize allowed roles list
+  let roles = [];
+  if (allowedRoles) {
+    roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+  } else if (requiredRole) {
+    roles = [requiredRole];
+  }
+
+  const isRoleAllowed = roles.length === 0 || (user?.role && roles.includes(user.role));
+
+  if (!isRoleAllowed) {
     return (
       <div className="w-full max-w-3xl mx-auto px-6 py-24 min-h-[65vh] flex flex-col items-start font-mono">
         <div className="inline-flex items-center gap-2 px-3 py-1 mb-6 border border-hairline bg-panel text-xs text-amber font-medium">
@@ -35,22 +45,28 @@ export default function ProtectedRoute({ children, requiredRole }) {
         <p className="text-sm text-muted leading-relaxed max-w-xl mb-8">
           Your current account is authenticated as{" "}
           <strong className="text-cyan font-semibold">{user?.role}</strong> (
-          {user?.email}), but this portal specifically requires the{" "}
-          <strong className="text-amber font-semibold">{requiredRole}</strong> role.
+          {user?.email}), but this portal requires{" "}
+          <strong className="text-amber font-semibold">{roles.join(" or ")}</strong> role privileges.
         </p>
 
         <div className="p-4 border border-hairline bg-panel/60 w-full mb-8 space-y-2 text-xs text-subtle">
           <div>USER IDENTIFIER: {user?.name || user?.email}</div>
           <div>GRANTED ROLE: {user?.role}</div>
-          <div>REQUIRED ROLE: {requiredRole}</div>
+          <div>REQUIRED ROLE(S): {roles.join(", ")}</div>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
           <Link
-            to={user?.role === "admin" ? "/admin" : user?.role === "judge" ? "/judge" : "/"}
+            to={
+              user?.role === "admin"
+                ? "/admin"
+                : user?.role === "judge"
+                ? "/judge"
+                : "/dashboard"
+            }
             className="px-5 py-2.5 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors"
           >
-            &rarr; Go to My Dashboard
+            &rarr; Go to My Portal
           </Link>
 
           <button
@@ -67,3 +83,4 @@ export default function ProtectedRoute({ children, requiredRole }) {
 
   return children;
 }
+

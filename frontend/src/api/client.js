@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 export const TOKEN_STORAGE_KEY = "codeshield_token";
 
@@ -11,7 +11,7 @@ export async function apiFetch(endpoint, options = {}) {
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
 
   const headers = {
-    ...(!options.isFormData && { "Content-Type": "application/json" }),
+    ...(!options.isFormData && !options.noContentType && { "Content-Type": "application/json" }),
     ...(token && { Authorization: `Bearer ${token}` }),
     ...options.headers,
   };
@@ -59,12 +59,46 @@ export async function apiFetch(endpoint, options = {}) {
 }
 
 export const apiClient = {
+  baseUrl: API_BASE_URL,
   get: (endpoint, options = {}) => apiFetch(endpoint, { ...options, method: "GET" }),
   post: (endpoint, body, options = {}) =>
     apiFetch(endpoint, { ...options, method: "POST", body }),
   patch: (endpoint, body, options = {}) =>
     apiFetch(endpoint, { ...options, method: "PATCH", body }),
   delete: (endpoint, options = {}) => apiFetch(endpoint, { ...options, method: "DELETE" }),
+  
+  /**
+   * Helper to download CSV or binary files securely with JWT headers
+   */
+  downloadFile: async (endpoint, defaultFilename) => {
+    const response = await apiFetch(endpoint, {
+      method: "GET",
+      rawResponse: true,
+      noContentType: true,
+    });
+
+    if (!response.ok) {
+      let errText = "Download failed";
+      try {
+        const errJson = await response.json();
+        errText = errJson.detail || errJson.message || errText;
+      } catch {
+        // ignore
+      }
+      throw new Error(errText);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = defaultFilename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    return true;
+  },
 };
 
 export default apiClient;

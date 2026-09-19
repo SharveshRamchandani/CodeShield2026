@@ -25,11 +25,21 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
+class UserRoleUpdate(BaseModel):
+    role: str = Field(..., description="Role to assign: 'admin' or 'judge'")
+
+
+class TeamConfirmUpdate(BaseModel):
+    confirmed: bool
+
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     role: str
     name: str
+    type: Optional[str] = None
     team_code: Optional[str] = None
     team_name: Optional[str] = None
 
@@ -43,10 +53,12 @@ class GoogleAuthResponse(BaseModel):
     token_type: Optional[str] = "bearer"
     role: Optional[str] = None
     name: Optional[str] = None
+    type: Optional[str] = None
     team_code: Optional[str] = None
     team_name: Optional[str] = None
     needs_registration: Optional[bool] = False
     email: Optional[str] = None
+
 
 
 # ==========================================

@@ -73,6 +73,48 @@ def register_team(
                     detail="Team name is already taken. Please choose a different team name.",
                 )
 
+            # Validate unique college ID / roll number across all team members and existing teams
+            submitted_college_ids = [
+                team_data.leader_college_id.strip().upper(),
+                team_data.member2_college_id.strip().upper() if team_data.member2_college_id else None,
+                team_data.member3_college_id.strip().upper() if team_data.member3_college_id else None,
+                team_data.member4_college_id.strip().upper() if team_data.member4_college_id else None,
+            ]
+            submitted_college_ids = [cid for cid in submitted_college_ids if cid]
+
+            # 1. Intra-team duplicate check
+            seen_ids = set()
+            for cid in submitted_college_ids:
+                if cid in seen_ids:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Duplicate College ID / Roll Number '{cid}' submitted within the same team registration.",
+                    )
+                seen_ids.add(cid)
+
+            # 2. Cross-team duplicate check across all 4 columns of all existing teams
+            cur.execute(
+                """
+                SELECT team_name, team_code, college_id FROM (
+                    SELECT team_name, team_code, UPPER(leader_college_id) AS college_id FROM teams WHERE leader_college_id IS NOT NULL
+                    UNION ALL
+                    SELECT team_name, team_code, UPPER(member2_college_id) AS college_id FROM teams WHERE member2_college_id IS NOT NULL
+                    UNION ALL
+                    SELECT team_name, team_code, UPPER(member3_college_id) AS college_id FROM teams WHERE member3_college_id IS NOT NULL
+                    UNION ALL
+                    SELECT team_name, team_code, UPPER(member4_college_id) AS college_id FROM teams WHERE member4_college_id IS NOT NULL
+                ) existing_members
+                WHERE college_id = ANY(%s);
+                """,
+                (submitted_college_ids,),
+            )
+            existing_dup = cur.fetchone()
+            if existing_dup:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"College ID / Roll Number '{existing_dup['college_id']}' is already registered under team '{existing_dup['team_name']}' ({existing_dup['team_code']}). A student can only be part of one team.",
+                )
+
             # Validate problem_statement_id if provided
             if team_data.problem_statement_id:
                 cur.execute(
@@ -87,6 +129,7 @@ def register_team(
 
             team_code = generate_unique_team_code(cur)
             confirmation_token = secrets.token_urlsafe(32)
+
 
             insert_query = """
                 INSERT INTO teams (

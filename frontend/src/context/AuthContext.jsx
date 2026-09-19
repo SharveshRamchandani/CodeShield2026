@@ -48,8 +48,9 @@ export function AuthProvider({ children }) {
     };
   }, [logout]);
 
-  const login = async (email, password) => {
-    const data = await apiClient.post("/api/auth/login", { email, password });
+  const login = async (email, password, type = "staff") => {
+    const endpoint = type === "team" ? "/api/auth/team/login" : "/api/auth/staff/login";
+    const data = await apiClient.post(endpoint, { email, password });
     if (data && data.access_token) {
       localStorage.setItem(TOKEN_STORAGE_KEY, data.access_token);
       setToken(data.access_token);
@@ -57,28 +58,44 @@ export function AuthProvider({ children }) {
         email,
         role: data.role,
         name: data.name,
+        type: data.type || type,
+        team_code: data.team_code,
+        team_name: data.team_name,
       });
-      hydrateUser(data.access_token);
+      await hydrateUser(data.access_token);
       return data;
     }
     throw new Error("Invalid token response from server");
   };
 
-  const loginWithToken = (tokenData) => {
-    if (tokenData && tokenData.access_token) {
-      localStorage.setItem(TOKEN_STORAGE_KEY, tokenData.access_token);
-      setToken(tokenData.access_token);
-      setUser({
-        email: tokenData.email,
-        role: tokenData.role || "leader",
-        name: tokenData.name,
-        team_code: tokenData.team_code,
-        team_name: tokenData.team_name,
-      });
-      hydrateUser(tokenData.access_token);
-      return tokenData;
+  const loginWithToken = async (tokenDataOrJwt) => {
+    let rawToken = "";
+    let initialUser = null;
+
+    if (typeof tokenDataOrJwt === "string") {
+      rawToken = tokenDataOrJwt;
+    } else if (tokenDataOrJwt && tokenDataOrJwt.access_token) {
+      rawToken = tokenDataOrJwt.access_token;
+      initialUser = {
+        email: tokenDataOrJwt.email,
+        role: tokenDataOrJwt.role,
+        name: tokenDataOrJwt.name,
+        team_code: tokenDataOrJwt.team_code,
+        team_name: tokenDataOrJwt.team_name,
+        type: tokenDataOrJwt.type,
+      };
     }
-    throw new Error("Invalid token payload provided to loginWithToken");
+
+    if (rawToken) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, rawToken);
+      setToken(rawToken);
+      if (initialUser) {
+        setUser(initialUser);
+      }
+      await hydrateUser(rawToken);
+      return tokenDataOrJwt;
+    }
+    throw new Error("Invalid token provided to loginWithToken");
   };
 
   const value = {
@@ -102,3 +119,4 @@ export function useAuth() {
   }
   return context;
 }
+

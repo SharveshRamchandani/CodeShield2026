@@ -14,44 +14,86 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Submissions"])
 
 
-@router.post(
-    "/",
-    response_model=SubmissionOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Submit project idea and repository (Public / Team)",
+# =========================================================================
+# Team Leader Submissions (require_role("leader"))
+# =========================================================================
+
+@router.get(
+    "/mine",
+    response_model=Optional[SubmissionOut],
+    status_code=status.HTTP_200_OK,
+    summary="Get active submission for the logged-in team leader",
 )
-def create_submission(
-    submission_data: SubmissionCreate,
+def get_my_team_submission(
+    current_user: dict = Depends(require_role("leader")),
     db=Depends(get_db),
 ):
     """
-    Submits project deliverables (title, description, repo URL, presentation deck URL)
-    for a registered team. Enforces one active submission per team (upsert).
+    Returns submission deliverable for the authenticated team leader's team.
     """
+    team_id = current_user["id"]
+
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
-            # Check if team exists
-            cur.execute(
-                "SELECT id, team_name, team_code, problem_statement_id FROM teams WHERE id = %s;",
-                (str(submission_data.team_id),),
-            )
+            query = """
+                SELECT
+                    s.id, s.team_id, s.idea_title, s.idea_description,
+                    s.repo_url, s.deck_file_url, s.submitted_at,
+                    t.team_name, t.team_code,
+                    ps.code AS problem_statement_code,
+                    ps.title AS problem_statement_title
+                FROM submissions s
+                JOIN teams t ON s.team_id = t.id
+                LEFT JOIN problem_statements ps ON t.problem_statement_id = ps.id
+                WHERE s.team_id = %s;
+            """
+            cur.execute(query, (team_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            return dict(row)
+    except psycopg2.Error as db_err:
+        logger.error(f"Database error fetching leader submission: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve team submission",
+        )
+
+
+@router.put(
+    "/mine",
+    response_model=SubmissionOut,
+    status_code=status.HTTP_200_OK,
+    summary="Create or update project submission for the logged-in team leader",
+)
+def upsert_my_team_submission(
+    submission_data: SubmissionCreate,
+    current_user: dict = Depends(require_role("leader")),
+    db=Depends(get_db),
+):
+    """
+    Creates or updates project deliverables scoped strictly to the authenticated team leader's team.
+    """
+    team_id = current_user["id"]
+
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # Check team
+            cur.execute("SELECT id, team_name, team_code FROM teams WHERE id = %s;", (team_id,))
             team = cur.fetchone()
             if not team:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Team not found for submission.",
+                    detail="Team not found.",
                 )
 
-            # Check if submission already exists for this team
-            cur.execute(
-                "SELECT id FROM submissions WHERE team_id = %s;",
-                (str(submission_data.team_id),),
-            )
+            # Check existing submission
+            cur.execute("SELECT id FROM submissions WHERE team_id = %s;", (team_id,))
             existing = cur.fetchone()
 
             if existing:
-                # Update existing submission
-                update_query = """
+                cur.execute(
+                    """
                     UPDATE submissions
                     SET idea_title = %s,
                         idea_description = %s,
@@ -60,9 +102,7 @@ def create_submission(
                         submitted_at = NOW()
                     WHERE id = %s
                     RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
-                """
-                cur.execute(
-                    update_query,
+                    """,
                     (
                         submission_data.idea_title.strip(),
                         submission_data.idea_description.strip(),
@@ -73,16 +113,103 @@ def create_submission(
                 )
                 saved = cur.fetchone()
             else:
-                # Insert new submission
-                insert_query = """
-                    INSERT INTO submissions (
-                        team_id, idea_title, idea_description, repo_url, deck_file_url
-                    ) VALUES (
-                        %s, %s, %s, %s, %s
-                    ) RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
-                """
                 cur.execute(
-                    insert_query,
+                    """
+                    INSERT INTO submissions (team_id, idea_title, idea_description, repo_url, deck_file_url)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
+                    """,
+                    (
+                        team_id,
+                        submission_data.idea_title.strip(),
+                        submission_data.idea_description.strip(),
+                        submission_data.repo_url.strip() if submission_data.repo_url else None,
+                        submission_data.deck_file_url.strip() if submission_data.deck_file_url else None,
+                    ),
+                )
+                saved = cur.fetchone()
+
+            db.commit()
+            res = dict(saved)
+            res["team_name"] = team["team_name"]
+            res["team_code"] = team["team_code"]
+            return res
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error during leader submission upsert: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to record project submission",
+        )
+
+
+# =========================================================================
+# General & Staff Submissions Endpoints
+# =========================================================================
+
+@router.post(
+    "/",
+    response_model=SubmissionOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit project deliverables (Public / Team)",
+)
+def create_submission(
+    submission_data: SubmissionCreate,
+    db=Depends(get_db),
+):
+    """
+    Submits project deliverables for a registered team.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, team_name, team_code FROM teams WHERE id = %s;",
+                (str(submission_data.team_id),),
+            )
+            team = cur.fetchone()
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Team not found for submission.",
+                )
+
+            cur.execute(
+                "SELECT id FROM submissions WHERE team_id = %s;",
+                (str(submission_data.team_id),),
+            )
+            existing = cur.fetchone()
+
+            if existing:
+                cur.execute(
+                    """
+                    UPDATE submissions
+                    SET idea_title = %s,
+                        idea_description = %s,
+                        repo_url = %s,
+                        deck_file_url = %s,
+                        submitted_at = NOW()
+                    WHERE id = %s
+                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
+                    """,
+                    (
+                        submission_data.idea_title.strip(),
+                        submission_data.idea_description.strip(),
+                        submission_data.repo_url.strip() if submission_data.repo_url else None,
+                        submission_data.deck_file_url.strip() if submission_data.deck_file_url else None,
+                        existing["id"],
+                    ),
+                )
+                saved = cur.fetchone()
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO submissions (team_id, idea_title, idea_description, repo_url, deck_file_url)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
+                    """,
                     (
                         str(submission_data.team_id),
                         submission_data.idea_title.strip(),
@@ -94,7 +221,6 @@ def create_submission(
                 saved = cur.fetchone()
 
             db.commit()
-
             res = dict(saved)
             res["team_name"] = team["team_name"]
             res["team_code"] = team["team_code"]
@@ -115,15 +241,15 @@ def create_submission(
     "/",
     response_model=List[SubmissionOut],
     status_code=status.HTTP_200_OK,
-    summary="List all submissions (Admin / Judge Evaluation)",
-    dependencies=[Depends(get_current_user)],
+    summary="List all submissions (Admin & Judge)",
+    dependencies=[Depends(require_role("admin", "judge"))],
 )
 def list_submissions(
     db=Depends(get_db),
 ):
     """
     Retrieves all team submissions with team and problem statement details.
-    Accessible to authenticated Admins and Judges.
+    Accessible to authenticated Staff (Admin & Judge).
     """
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
@@ -154,7 +280,7 @@ def list_submissions(
     "/team/{team_id}",
     response_model=SubmissionOut,
     status_code=status.HTTP_200_OK,
-    summary="Get submission for a specific team",
+    summary="Get submission for a specific team (Public)",
 )
 def get_submission_by_team(
     team_id: UUID,

@@ -57,10 +57,52 @@ def staff_login(
             user = cur.fetchone()
 
             if not user or not user.get("password_hash"):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid email or password",
-                    headers={"WWW-Authenticate": "Bearer"},
+                # Fallback: Check teams table if not in users
+                cur.execute(
+                    """
+                    SELECT * FROM teams 
+                    WHERE LOWER(leader_email) = LOWER(%s)
+                       OR LOWER(COALESCE(member2_email, '')) = LOWER(%s)
+                       OR LOWER(COALESCE(member3_email, '')) = LOWER(%s)
+                       OR LOWER(COALESCE(member4_email, '')) = LOWER(%s);
+                    """,
+                    (credentials.email.strip(), credentials.email.strip(), credentials.email.strip(), credentials.email.strip()),
+                )
+                team = cur.fetchone()
+                if not team:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid email or password",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                
+                user_email = credentials.email.strip()
+                user_name = team["leader_name"]
+                if team.get("member2_email") and team["member2_email"].lower() == user_email.lower():
+                    user_name = team.get("member2_name") or user_name
+                elif team.get("member3_email") and team["member3_email"].lower() == user_email.lower():
+                    user_name = team.get("member3_name") or user_name
+                elif team.get("member4_email") and team["member4_email"].lower() == user_email.lower():
+                    user_name = team.get("member4_name") or user_name
+
+                token_data = {
+                    "sub": str(team["id"]),
+                    "email": user_email,
+                    "role": "leader",
+                    "name": user_name,
+                    "team_code": team.get("team_code"),
+                    "team_name": team.get("team_name"),
+                    "type": "team",
+                }
+                access_token = create_access_token(data=token_data)
+                return TokenResponse(
+                    access_token=access_token,
+                    token_type="bearer",
+                    role="leader",
+                    name=user_name,
+                    team_code=team.get("team_code"),
+                    team_name=team.get("team_name"),
+                    type="team",
                 )
 
             is_valid = verify_password(credentials.password, user["password_hash"])
@@ -71,12 +113,45 @@ def staff_login(
                     headers={"WWW-Authenticate": "Bearer"},
                 )
 
+            # Check if this user is also associated with a team
+            cur.execute(
+                "SELECT id, team_code, team_name FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
+                (user["email"],),
+            )
+            team_info = cur.fetchone()
+
+            if not team_info and user["role"] in ["leader", "member"]:
+                import secrets, string
+                chars = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+                auto_code = f"CS-{chars}"
+                auto_name = f"{user['name']}'s Team"
+                cur.execute(
+                    """
+                    INSERT INTO teams (
+                        team_name, team_code, team_size,
+                        leader_name, leader_email, leader_phone, leader_college_id,
+                        leader_department, leader_year,
+                        attendance_day1, attendance_day2, confirmed
+                    ) VALUES (
+                        %s, %s, 2,
+                        %s, %s, 'N/A', %s,
+                        'General', '1st Year',
+                        FALSE, FALSE, TRUE
+                    ) RETURNING id, team_code, team_name;
+                    """,
+                    (auto_name, auto_code, user["name"], user["email"], f"ID-{auto_code}"),
+                )
+                team_info = cur.fetchone()
+                db.commit()
+
             token_data = {
-                "sub": str(user["id"]),
+                "sub": str(team_info["id"]) if team_info and user["role"] in ["leader", "member"] else str(user["id"]),
                 "email": user["email"],
                 "role": user["role"],
                 "name": user["name"],
-                "type": "staff",
+                "type": "staff" if user["role"] in ["admin", "judge"] else "team",
+                "team_code": team_info["team_code"] if team_info else None,
+                "team_name": team_info["team_name"] if team_info else None,
             }
             access_token = create_access_token(data=token_data)
 
@@ -85,7 +160,9 @@ def staff_login(
                 token_type="bearer",
                 role=user["role"],
                 name=user["name"],
-                type="staff",
+                type=token_data["type"],
+                team_code=token_data["team_code"],
+                team_name=token_data["team_name"],
             )
     except HTTPException:
         raise
@@ -174,10 +251,16 @@ def unified_google_login(
                     detail="Only BIT Sathy college accounts (@bitsathy.ac.in) can register as participants.",
                 )
 
-            # Step 3: Check teams table by leader_email
+            # Step 3: Check teams table by leader or member emails
             cur.execute(
-                "SELECT * FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
-                (google_email,),
+                """
+                SELECT * FROM teams 
+                WHERE LOWER(leader_email) = LOWER(%s)
+                   OR LOWER(COALESCE(member2_email, '')) = LOWER(%s)
+                   OR LOWER(COALESCE(member3_email, '')) = LOWER(%s)
+                   OR LOWER(COALESCE(member4_email, '')) = LOWER(%s);
+                """,
+                (google_email, google_email, google_email, google_email),
             )
             team = cur.fetchone()
 
@@ -202,11 +285,19 @@ def unified_google_login(
                 team = cur.fetchone()
                 db.commit()
 
+            user_name = google_name or team["leader_name"]
+            if team.get("member2_email") and team["member2_email"].lower() == google_email:
+                user_name = team.get("member2_name") or user_name
+            elif team.get("member3_email") and team["member3_email"].lower() == google_email:
+                user_name = team.get("member3_name") or user_name
+            elif team.get("member4_email") and team["member4_email"].lower() == google_email:
+                user_name = team.get("member4_name") or user_name
+
             token_data = {
                 "sub": str(team["id"]),
-                "email": team["leader_email"],
+                "email": google_email,
                 "role": "leader",
-                "name": team["leader_name"],
+                "name": user_name,
                 "team_code": team.get("team_code"),
                 "team_name": team.get("team_name"),
                 "type": "team",
@@ -217,12 +308,12 @@ def unified_google_login(
                 access_token=access_token,
                 token_type="bearer",
                 role="leader",
-                name=team["leader_name"],
+                name=user_name,
                 team_code=team.get("team_code"),
                 team_name=team.get("team_name"),
                 type="team",
                 needs_registration=False,
-                email=team["leader_email"],
+                email=google_email,
             )
     except HTTPException:
         db.rollback()
@@ -252,20 +343,96 @@ def team_login(
     db=Depends(get_db),
 ):
     """
-    Authenticates team leader credentials and issues a shared JWT access token with type='team'.
+    Authenticates team leader or member credentials (checking users table and teams table).
     """
+    email_clean = credentials.email.strip().lower()
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # 1. Check users table first (e.g. users created via Admin or direct user registration)
             cur.execute(
-                "SELECT * FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
-                (credentials.email.strip(),),
+                "SELECT id, email, password_hash, role, name FROM users WHERE LOWER(email) = %s;",
+                (email_clean,),
+            )
+            user = cur.fetchone()
+
+            if user and user.get("password_hash"):
+                is_valid = verify_password(credentials.password, user["password_hash"])
+                if not is_valid:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid email or password",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+                # Check if this user is also associated with a team
+                cur.execute(
+                    "SELECT id, team_code, team_name FROM teams WHERE LOWER(leader_email) = %s;",
+                    (email_clean,),
+                )
+                team_info = cur.fetchone()
+
+                if not team_info and user["role"] in ["leader", "member"]:
+                    import secrets, string
+                    chars = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+                    auto_code = f"CS-{chars}"
+                    auto_name = f"{user['name']}'s Team"
+                    cur.execute(
+                        """
+                        INSERT INTO teams (
+                            team_name, team_code, team_size,
+                            leader_name, leader_email, leader_phone, leader_college_id,
+                            leader_department, leader_year,
+                            attendance_day1, attendance_day2, confirmed
+                        ) VALUES (
+                            %s, %s, 2,
+                            %s, %s, 'N/A', %s,
+                            'General', '1st Year',
+                            FALSE, FALSE, TRUE
+                        ) RETURNING id, team_code, team_name;
+                        """,
+                        (auto_name, auto_code, user["name"], user["email"], f"ID-{auto_code}"),
+                    )
+                    team_info = cur.fetchone()
+                    db.commit()
+
+                token_data = {
+                    "sub": str(team_info["id"]) if team_info and user["role"] in ["leader", "member"] else str(user["id"]),
+                    "email": user["email"],
+                    "role": user["role"],
+                    "name": user["name"],
+                    "type": "team",
+                    "team_code": team_info["team_code"] if team_info else None,
+                    "team_name": team_info["team_name"] if team_info else None,
+                }
+                access_token = create_access_token(data=token_data)
+
+                return TokenResponse(
+                    access_token=access_token,
+                    token_type="bearer",
+                    role=user["role"],
+                    name=user["name"],
+                    team_code=token_data["team_code"],
+                    team_name=token_data["team_name"],
+                    type="team",
+                )
+
+            # 2. Check teams table
+            cur.execute(
+                """
+                SELECT * FROM teams 
+                WHERE LOWER(leader_email) = %s
+                   OR LOWER(COALESCE(member2_email, '')) = %s
+                   OR LOWER(COALESCE(member3_email, '')) = %s
+                   OR LOWER(COALESCE(member4_email, '')) = %s;
+                """,
+                (email_clean, email_clean, email_clean, email_clean),
             )
             team = cur.fetchone()
 
             if not team:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="No team registered with this leader email address.",
+                    detail="Invalid email or password. Please verify your credentials.",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
 
@@ -275,11 +442,19 @@ def team_login(
                     detail="Team registration is pending email confirmation. Please click the confirmation link sent to your email or sign in with your @bitsathy.ac.in Google account.",
                 )
 
+            user_name = team["leader_name"]
+            if team.get("member2_email") and team["member2_email"].lower() == email_clean:
+                user_name = team.get("member2_name") or user_name
+            elif team.get("member3_email") and team["member3_email"].lower() == email_clean:
+                user_name = team.get("member3_name") or user_name
+            elif team.get("member4_email") and team["member4_email"].lower() == email_clean:
+                user_name = team.get("member4_name") or user_name
+
             token_data = {
                 "sub": str(team["id"]),
-                "email": team["leader_email"],
+                "email": email_clean,
                 "role": "leader",
-                "name": team["leader_name"],
+                "name": user_name,
                 "team_code": team.get("team_code"),
                 "team_name": team.get("team_name"),
                 "type": "team",
@@ -290,7 +465,7 @@ def team_login(
                 access_token=access_token,
                 token_type="bearer",
                 role="leader",
-                name=team["leader_name"],
+                name=user_name,
                 team_code=team.get("team_code"),
                 team_name=team.get("team_name"),
                 type="team",

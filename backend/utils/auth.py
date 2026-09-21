@@ -138,33 +138,51 @@ def get_current_user(
 
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
-            # 1. Check users table
-            user = None
+            # 1. Check users table first (covers Admin, Judge, Leader, Member accounts in users)
             if user_id:
-                try:
-                    cur.execute(
-                        "SELECT id, email, role, name, created_at FROM users WHERE id = %s;",
-                        (user_id,),
-                    )
-                    user = cur.fetchone()
-                except psycopg2.Error:
-                    db.rollback()
-
-            if not user and email:
+                cur.execute(
+                    "SELECT id, email, role, name, created_at FROM users WHERE id = %s;",
+                    (user_id,),
+                )
+            else:
                 cur.execute(
                     "SELECT id, email, role, name, created_at FROM users WHERE LOWER(email) = LOWER(%s);",
                     (email,),
                 )
-                user = cur.fetchone()
+            user = cur.fetchone()
 
             if user:
                 user_dict = dict(user)
-                # Check for any linked team record
+                # Check for associated team info
                 cur.execute(
-                    "SELECT id, team_code, team_name, confirmed FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
+                    "SELECT team_code, team_name, confirmed FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
                     (user_dict["email"],),
                 )
-                linked_team = cur.fetchone()
+                team_info = cur.fetchone()
+
+                if not team_info and user_dict["role"] in ["leader", "member"]:
+                    import secrets, string
+                    chars = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+                    auto_code = f"CS-{chars}"
+                    auto_name = f"{user_dict['name']}'s Team"
+                    cur.execute(
+                        """
+                        INSERT INTO teams (
+                            team_name, team_code, team_size,
+                            leader_name, leader_email, leader_phone, leader_college_id,
+                            leader_department, leader_year,
+                            attendance_day1, attendance_day2, confirmed
+                        ) VALUES (
+                            %s, %s, 2,
+                            %s, %s, 'N/A', %s,
+                            'General', '1st Year',
+                            FALSE, FALSE, TRUE
+                        ) RETURNING team_code, team_name, confirmed;
+                        """,
+                        (auto_name, auto_code, user_dict["name"], user_dict["email"], f"ID-{auto_code}"),
+                    )
+                    team_info = cur.fetchone()
+                    db.commit()
 
                 return {
                     "id": str(user_dict["id"]),
@@ -172,33 +190,45 @@ def get_current_user(
                     "role": user_dict["role"],
                     "name": user_dict["name"],
                     "type": "staff" if user_dict["role"] in ["admin", "judge"] else "team",
-                    "team_id": str(linked_team["id"]) if linked_team else str(user_dict["id"]),
-                    "team_code": linked_team.get("team_code") if linked_team else None,
-                    "team_name": linked_team.get("team_name") if linked_team else None,
-                    "confirmed": linked_team.get("confirmed", True) if linked_team else True,
+                    "team_code": team_info["team_code"] if team_info else None,
+                    "team_name": team_info["team_name"] if team_info else None,
+                    "confirmed": team_info["confirmed"] if team_info else True,
                     "created_at": user_dict.get("created_at"),
                 }
 
-            # 2. Check teams table (for teams registered via public registration)
-            team = None
+            # 2. Check teams table (for teams registered directly via public form)
             if user_id:
-                try:
-                    cur.execute("SELECT * FROM teams WHERE id = %s;", (user_id,))
-                    team = cur.fetchone()
-                except psycopg2.Error:
-                    db.rollback()
-
-            if not team and email:
-                cur.execute("SELECT * FROM teams WHERE LOWER(leader_email) = LOWER(%s);", (email,))
-                team = cur.fetchone()
+                cur.execute("SELECT * FROM teams WHERE id = %s;", (user_id,))
+            else:
+                cur.execute(
+                    """
+                    SELECT * FROM teams 
+                    WHERE LOWER(leader_email) = LOWER(%s)
+                       OR LOWER(COALESCE(member2_email, '')) = LOWER(%s)
+                       OR LOWER(COALESCE(member3_email, '')) = LOWER(%s)
+                       OR LOWER(COALESCE(member4_email, '')) = LOWER(%s);
+                    """,
+                    (email, email, email, email),
+                )
+            team = cur.fetchone()
 
             if team:
                 team_dict = dict(team)
+                # Determine active display name/email for team member
+                current_email = email or team_dict["leader_email"]
+                current_name = team_dict["leader_name"]
+                if team_dict.get("member2_email") and current_email.lower() == team_dict["member2_email"].lower():
+                    current_name = team_dict.get("member2_name") or current_name
+                elif team_dict.get("member3_email") and current_email.lower() == team_dict["member3_email"].lower():
+                    current_name = team_dict.get("member3_name") or current_name
+                elif team_dict.get("member4_email") and current_email.lower() == team_dict["member4_email"].lower():
+                    current_name = team_dict.get("member4_name") or current_name
+
                 return {
                     "id": str(team_dict["id"]),
-                    "email": team_dict["leader_email"],
+                    "email": current_email,
                     "role": "leader",
-                    "name": team_dict["leader_name"],
+                    "name": current_name,
                     "team_code": team_dict.get("team_code"),
                     "team_name": team_dict.get("team_name"),
                     "confirmed": team_dict.get("confirmed", False),
@@ -208,7 +238,7 @@ def get_current_user(
 
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User or team account associated with this token no longer exists",
+                detail="User account associated with this token no longer exists",
                 headers={"WWW-Authenticate": "Bearer"},
             )
     except HTTPException:

@@ -2,11 +2,71 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localho
 
 export const TOKEN_STORAGE_KEY = "codeshield_token";
 
+const RETRYABLE_STATUSES = [502, 503, 504];
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let activeRequestsCount = 0;
+let wakeTimer = null;
+let isWakingState = false;
+
+function startRequestTracking() {
+  activeRequestsCount++;
+  if (!wakeTimer && !isWakingState) {
+    wakeTimer = setTimeout(() => {
+      if (activeRequestsCount > 0) {
+        isWakingState = true;
+        window.dispatchEvent(
+          new CustomEvent("codeshield-server-waking", { detail: { waking: true } })
+        );
+      }
+    }, 4000);
+  }
+}
+
+function endRequestTracking() {
+  activeRequestsCount = Math.max(0, activeRequestsCount - 1);
+  if (activeRequestsCount === 0) {
+    if (wakeTimer) {
+      clearTimeout(wakeTimer);
+      wakeTimer = null;
+    }
+    if (isWakingState) {
+      isWakingState = false;
+      window.dispatchEvent(
+        new CustomEvent("codeshield-server-waking", { detail: { waking: false } })
+      );
+    }
+  }
+}
+
 /**
- * Standardized API client with automatic JWT token attachment and error handling.
+ * Fires an ultra-lightweight ping to the backend /health endpoint to awaken idle free-tier instances.
+ * Silently catches and swallows any network or server errors.
+ */
+export async function wakeBackend() {
+  try {
+    const url = endpointUrl("/health");
+    await fetch(url, { method: "GET", mode: "cors" });
+  } catch {
+    // Silently ignore errors during background wake-up ping
+  }
+}
+
+function endpointUrl(endpoint) {
+  if (endpoint.startsWith("http")) return endpoint;
+  return `${API_BASE_URL}${endpoint}`;
+}
+
+/**
+ * Standardized API client with automatic JWT token attachment, 4s wake tracking, and error handling.
  */
 export async function apiFetch(endpoint, options = {}) {
-  const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const method = (options.method || "GET").toUpperCase();
+  const isGet = method === "GET";
+  const url = endpointUrl(endpoint);
 
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
 
@@ -18,6 +78,7 @@ export async function apiFetch(endpoint, options = {}) {
 
   const config = {
     ...options,
+    method,
     headers,
   };
 
@@ -25,37 +86,70 @@ export async function apiFetch(endpoint, options = {}) {
     config.body = JSON.stringify(config.body);
   }
 
-  const response = await fetch(url, config);
+  startRequestTracking();
+  let response;
+  try {
+    try {
+      response = await fetch(url, config);
+    } catch (networkErr) {
+      // 1 automatic retry (2s delay) for GET requests only on network failures
+      if (isGet && !options._retryAttempted) {
+        await sleep(2000);
+        return await apiFetch(endpoint, { ...options, _retryAttempted: true });
+      }
+      throw networkErr;
+    }
 
-  // If token is invalid/expired (401), trigger auth error event
-  if (response.status === 401 && token) {
-    window.dispatchEvent(new CustomEvent("codeshield-auth-expired"));
+    // 1 automatic retry (2s delay) for GET requests on 502/503/504 gateway cold start errors
+    if (isGet && !options._retryAttempted && RETRYABLE_STATUSES.includes(response.status)) {
+      await sleep(2000);
+      return await apiFetch(endpoint, { ...options, _retryAttempted: true });
+    }
+
+    // If token is invalid/expired (401), trigger auth error event
+    if (response.status === 401 && token) {
+      window.dispatchEvent(new CustomEvent("codeshield-auth-expired"));
+    }
+
+    if (options.rawResponse) {
+      return response;
+    }
+
+    // Parse JSON or return text
+    const contentType = response.headers.get("content-type");
+    let data = null;
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json().catch(() => null);
+    } else if (contentType && contentType.includes("text/")) {
+      data = await response.text();
+    }
+
+    if (!response.ok) {
+      let errorMessage = `Request failed with status ${response.status}: ${response.statusText}`;
+      if (data) {
+        if (typeof data.detail === "string") {
+          errorMessage = data.detail;
+        } else if (Array.isArray(data.detail)) {
+          errorMessage = data.detail
+            .map((err) => {
+              const field = Array.isArray(err.loc) ? err.loc.slice(1).join(".") : "";
+              return field ? `${field}: ${err.msg}` : err.msg || JSON.stringify(err);
+            })
+            .join("; ");
+        } else if (data.message) {
+          errorMessage = data.message;
+        }
+      }
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+
+    return data;
+  } finally {
+    endRequestTracking();
   }
-
-  if (options.rawResponse) {
-    return response;
-  }
-
-  // Parse JSON or return text
-  const contentType = response.headers.get("content-type");
-  let data = null;
-  if (contentType && contentType.includes("application/json")) {
-    data = await response.json().catch(() => null);
-  } else if (contentType && contentType.includes("text/")) {
-    data = await response.text();
-  }
-
-  if (!response.ok) {
-    const errorMessage =
-      (data && (data.detail || data.message)) ||
-      `Request failed with status ${response.status}: ${response.statusText}`;
-    const error = new Error(errorMessage);
-    error.status = response.status;
-    error.data = data;
-    throw error;
-  }
-
-  return data;
 }
 
 export const apiClient = {
@@ -66,7 +160,7 @@ export const apiClient = {
   patch: (endpoint, body, options = {}) =>
     apiFetch(endpoint, { ...options, method: "PATCH", body }),
   delete: (endpoint, options = {}) => apiFetch(endpoint, { ...options, method: "DELETE" }),
-  
+
   /**
    * Helper to download CSV or binary files securely with JWT headers
    */

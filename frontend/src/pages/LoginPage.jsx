@@ -23,14 +23,25 @@ export default function LoginPage() {
 
   const navigateUserByRole = useCallback(
     (role) => {
-      if (from) {
+      const roleAllowedPaths = {
+        admin: ["/admin", "/judge", "/leader", "/member", "/dashboard", "/problem-statements", "/schedule"],
+        judge: ["/judge", "/problem-statements", "/schedule"],
+        leader: ["/leader", "/dashboard", "/problem-statements", "/schedule"],
+        member: ["/member", "/dashboard", "/problem-statements", "/schedule"],
+      };
+
+      const isPathAllowed = from && roleAllowedPaths[role]?.some((path) => from.startsWith(path));
+
+      if (from && isPathAllowed) {
         navigate(from, { replace: true });
       } else if (role === "admin") {
         navigate("/admin", { replace: true });
       } else if (role === "judge") {
         navigate("/judge", { replace: true });
       } else if (role === "leader") {
-        navigate("/dashboard", { replace: true });
+        navigate("/leader", { replace: true });
+      } else if (role === "member") {
+        navigate("/member", { replace: true });
       } else {
         navigate("/", { replace: true });
       }
@@ -163,6 +174,10 @@ export default function LoginPage() {
                 ? "Admin Portal"
                 : user.role === "judge"
                 ? "Judge Portal"
+                : user.role === "leader"
+                ? "Leader Dashboard"
+                : user.role === "member"
+                ? "Member Portal"
                 : "Team Dashboard"}
             </button>
           </div>

@@ -1,0 +1,32 @@
+name: Backend Keep-Alive Ping
+
+on:
+  schedule:
+    # Run every 10 minutes to prevent Render free-tier cold starts
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Health Endpoint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend /health
+        env:
+          BACKEND_URL: ${{ vars.BACKEND_URL }}
+        run: |
+          if [ -z "$BACKEND_URL" ]; then
+            echo "::warning ::BACKEND_URL repository variable is not set. Please configure BACKEND_URL in GitHub Repository Settings -> Secrets and variables -> Actions -> Variables."
+            exit 0
+          fi
+
+          # Remove trailing slash if provided
+          TARGET_URL="${BACKEND_URL%/}/health"
+
+          echo "Pinging $TARGET_URL to prevent Render idle sleep..."
+          curl -s -f -S --max-time 60 --retry 3 "$TARGET_URL" || {
+            echo "::error ::Keepalive ping to $TARGET_URL failed or timed out."
+            exit 1
+          }
+          echo ""
+          echo "Keep-alive ping completed successfully."

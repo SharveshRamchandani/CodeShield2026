@@ -102,6 +102,32 @@ export default function Navbar() {
               </Link>
             )}
 
+            {isAuthenticated && user?.role === "leader" && (
+              <Link
+                to="/leader"
+                className={`text-xs font-mono px-2.5 py-1 border border-emerald-500/40 bg-emerald-950/30 transition-colors ${
+                  location.pathname === "/leader" || location.pathname === "/dashboard"
+                    ? "text-emerald-400 font-bold border-emerald-400"
+                    : "text-emerald-400 hover:bg-emerald-950/50"
+                }`}
+              >
+                LEADER PORTAL
+              </Link>
+            )}
+
+            {isAuthenticated && user?.role === "member" && (
+              <Link
+                to="/member"
+                className={`text-xs font-mono px-2.5 py-1 border border-cyan/40 bg-cyan/10 transition-colors ${
+                  location.pathname === "/member" || location.pathname === "/dashboard"
+                    ? "text-cyan font-bold border-cyan"
+                    : "text-cyan hover:bg-cyan/20"
+                }`}
+              >
+                MEMBER PORTAL
+              </Link>
+            )}
+
             {/* Auth Session Action (Login / Logout) */}
             {isAuthenticated ? (
               <button
@@ -242,6 +268,26 @@ export default function Navbar() {
               className="py-1.5 text-cyan font-bold"
             >
               &rarr; Judge Portal
+            </Link>
+          )}
+
+          {isAuthenticated && user?.role === "leader" && (
+            <Link
+              to="/leader"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 text-emerald-400 font-bold"
+            >
+              &rarr; Leader Dashboard
+            </Link>
+          )}
+
+          {isAuthenticated && user?.role === "member" && (
+            <Link
+              to="/member"
+              onClick={() => setMobileMenuOpen(false)}
+              className="py-1.5 text-cyan font-bold"
+            >
+              &rarr; Member Portal
             </Link>
           )}
 

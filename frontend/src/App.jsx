@@ -1,10 +1,13 @@
+import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider } from "./context/AuthContext";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
+import ServerWakeBanner from "./components/ServerWakeBanner";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { Analytics } from "@vercel/analytics/react";
+import { wakeBackend } from "./api/client";
 
 import HomePage from "./pages/HomePage";
 import ProblemStatementsPage from "./pages/ProblemStatementsPage";
@@ -14,14 +17,21 @@ import LoginPage from "./pages/LoginPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import JudgePage from "./pages/JudgePage";
 import TeamDashboardPage from "./pages/TeamDashboardPage";
+import LeaderDashboardPage from "./pages/LeaderDashboardPage";
+import MemberDashboardPage from "./pages/MemberDashboardPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import StubPage from "./pages/StubPage";
 
 export default function App() {
+  useEffect(() => {
+    wakeBackend();
+  }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>
         <div className="min-h-screen bg-base text-content flex flex-col justify-between selection:bg-cyan/30 selection:text-content transition-colors">
+          <ServerWakeBanner />
           <Navbar />
           <main className="flex-grow">
             <Routes>
@@ -43,12 +53,32 @@ export default function App() {
                 }
               />
 
-              {/* Protected Team Leader & Member Dashboard Route */}
+              {/* Protected Team Dashboards (Smart auto-routing) */}
               <Route
                 path="/dashboard"
                 element={
                   <ProtectedRoute allowedRoles={["leader", "member"]}>
                     <TeamDashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Protected Individual Team Leader Route */}
+              <Route
+                path="/leader"
+                element={
+                  <ProtectedRoute allowedRoles={["leader"]}>
+                    <LeaderDashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Protected Individual Team Member Route */}
+              <Route
+                path="/member"
+                element={
+                  <ProtectedRoute allowedRoles={["member", "leader"]}>
+                    <MemberDashboardPage />
                   </ProtectedRoute>
                 }
               />

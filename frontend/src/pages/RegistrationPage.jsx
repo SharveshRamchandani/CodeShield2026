@@ -22,10 +22,13 @@ export default function RegistrationPage() {
     leader_year: "3rd Year",
     member2_name: "",
     member2_college_id: "",
+    member2_email: "",
     member3_name: "",
     member3_college_id: "",
+    member3_email: "",
     member4_name: "",
     member4_college_id: "",
+    member4_email: "",
     problem_statement_id: "",
   }));
 
@@ -71,10 +74,13 @@ export default function RegistrationPage() {
         problem_statement_id: formData.problem_statement_id || null,
         member2_name: formData.team_size >= 2 ? formData.member2_name : null,
         member2_college_id: formData.team_size >= 2 ? formData.member2_college_id : null,
+        member2_email: formData.team_size >= 2 && formData.member2_email ? formData.member2_email.trim().toLowerCase() : null,
         member3_name: formData.team_size >= 3 ? formData.member3_name : null,
         member3_college_id: formData.team_size >= 3 ? formData.member3_college_id : null,
+        member3_email: formData.team_size >= 3 && formData.member3_email ? formData.member3_email.trim().toLowerCase() : null,
         member4_name: formData.team_size >= 4 ? formData.member4_name : null,
         member4_college_id: formData.team_size >= 4 ? formData.member4_college_id : null,
+        member4_email: formData.team_size >= 4 && formData.member4_email ? formData.member4_email.trim().toLowerCase() : null,
       };
 
       const res = await apiClient.post("/api/register", payload);
@@ -112,6 +118,12 @@ export default function RegistrationPage() {
           </div>
 
           <div className="pt-4 border-t border-hairline flex flex-wrap gap-4">
+            <Link
+              to="/leader"
+              className="px-4 py-2 text-xs font-bold text-zinc-950 bg-emerald-400 hover:bg-emerald-300 transition-colors"
+            >
+              Go to Leader Dashboard &rarr;
+            </Link>
             <Link
               to="/problem-statements"
               className="px-4 py-2 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors"
@@ -337,7 +349,7 @@ export default function RegistrationPage() {
             {/* Member 2 */}
             <div className="p-4 border border-hairline bg-base/50 space-y-3">
               <div className="text-xs text-subtle font-semibold uppercase">Member 2</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <input
                   type="text"
                   name="member2_name"
@@ -351,7 +363,15 @@ export default function RegistrationPage() {
                   name="member2_college_id"
                   value={formData.member2_college_id}
                   onChange={handleChange}
-                  placeholder="Member 2 Roll / College ID"
+                  placeholder="Roll / College ID"
+                  className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                />
+                <input
+                  type="email"
+                  name="member2_email"
+                  value={formData.member2_email}
+                  onChange={handleChange}
+                  placeholder="member2@bitsathy.ac.in"
                   className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
                 />
               </div>
@@ -361,7 +381,7 @@ export default function RegistrationPage() {
             {formData.team_size >= 3 && (
               <div className="p-4 border border-hairline bg-base/50 space-y-3">
                 <div className="text-xs text-subtle font-semibold uppercase">Member 3</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <input
                     type="text"
                     name="member3_name"
@@ -375,7 +395,15 @@ export default function RegistrationPage() {
                     name="member3_college_id"
                     value={formData.member3_college_id}
                     onChange={handleChange}
-                    placeholder="Member 3 Roll / College ID"
+                    placeholder="Roll / College ID"
+                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                  />
+                  <input
+                    type="email"
+                    name="member3_email"
+                    value={formData.member3_email}
+                    onChange={handleChange}
+                    placeholder="member3@bitsathy.ac.in"
                     className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
                   />
                 </div>
@@ -386,7 +414,7 @@ export default function RegistrationPage() {
             {formData.team_size >= 4 && (
               <div className="p-4 border border-hairline bg-base/50 space-y-3">
                 <div className="text-xs text-subtle font-semibold uppercase">Member 4</div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <input
                     type="text"
                     name="member4_name"
@@ -400,7 +428,15 @@ export default function RegistrationPage() {
                     name="member4_college_id"
                     value={formData.member4_college_id}
                     onChange={handleChange}
-                    placeholder="Member 4 Roll / College ID"
+                    placeholder="Roll / College ID"
+                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                  />
+                  <input
+                    type="email"
+                    name="member4_email"
+                    value={formData.member4_email}
+                    onChange={handleChange}
+                    placeholder="member4@bitsathy.ac.in"
                     className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
                   />
                 </div>

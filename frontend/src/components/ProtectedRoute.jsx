@@ -62,6 +62,10 @@ export default function ProtectedRoute({ children, allowedRoles, requiredRole })
                 ? "/admin"
                 : user?.role === "judge"
                 ? "/judge"
+                : user?.role === "leader"
+                ? "/leader"
+                : user?.role === "member"
+                ? "/member"
                 : "/dashboard"
             }
             className="px-5 py-2.5 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors"

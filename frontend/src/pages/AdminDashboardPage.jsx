@@ -601,25 +601,40 @@ export default function AdminDashboardPage() {
                         </td>
 
                         <td className="p-3 text-subtle text-[11px] space-y-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-cyan font-bold">•</span>
-                            <span className="text-content font-medium">{team.member2_name || "Member 2"}</span>
-                            <span className="text-[10px] font-mono text-muted">[{team.member2_college_id || "No ID"}]</span>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-cyan font-bold">•</span>
+                              <span className="text-content font-medium">{team.member2_name || "Member 2"}</span>
+                              <span className="text-[10px] font-mono text-muted">[{team.member2_college_id || "No ID"}]</span>
+                            </div>
+                            {team.member2_email && (
+                              <div className="text-[10px] text-muted font-mono pl-3">{team.member2_email}</div>
+                            )}
                           </div>
 
                           {team.member3_name && (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-cyan font-bold">•</span>
-                              <span className="text-content font-medium">{team.member3_name}</span>
-                              <span className="text-[10px] font-mono text-muted">[{team.member3_college_id || "No ID"}]</span>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-cyan font-bold">•</span>
+                                <span className="text-content font-medium">{team.member3_name}</span>
+                                <span className="text-[10px] font-mono text-muted">[{team.member3_college_id || "No ID"}]</span>
+                              </div>
+                              {team.member3_email && (
+                                <div className="text-[10px] text-muted font-mono pl-3">{team.member3_email}</div>
+                              )}
                             </div>
                           )}
 
                           {team.member4_name && (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-cyan font-bold">•</span>
-                              <span className="text-content font-medium">{team.member4_name}</span>
-                              <span className="text-[10px] font-mono text-muted">[{team.member4_college_id || "No ID"}]</span>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-cyan font-bold">•</span>
+                                <span className="text-content font-medium">{team.member4_name}</span>
+                                <span className="text-[10px] font-mono text-muted">[{team.member4_college_id || "No ID"}]</span>
+                              </div>
+                              {team.member4_email && (
+                                <div className="text-[10px] text-muted font-mono pl-3">{team.member4_email}</div>
+                              )}
                             </div>
                           )}
                         </td>
@@ -796,7 +811,6 @@ export default function AdminDashboardPage() {
                               <option value="admin">ADMIN</option>
                               <option value="judge">JUDGE</option>
                               <option value="leader">TEAM LEADER</option>
-                              <option value="member">TEAM MEMBER</option>
                             </select>
                           </td>
 
@@ -1115,7 +1129,7 @@ export default function AdminDashboardPage() {
                 <label className="text-[11px] uppercase text-subtle font-semibold block">
                   Assigned User Role
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setNewUserForm({ ...newUserForm, role: "judge" })}
@@ -1150,18 +1164,6 @@ export default function AdminDashboardPage() {
                     }`}
                   >
                     TEAM LEADER
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setNewUserForm({ ...newUserForm, role: "member" })}
-                    className={`py-2 px-3 border text-center font-bold text-xs transition-colors ${
-                      newUserForm.role === "member"
-                        ? "border-sky-500 bg-sky-950/30 text-sky-400"
-                        : "border-hairline bg-base text-muted hover:text-content"
-                    }`}
-                  >
-                    TEAM MEMBER
                   </button>
                 </div>
               </div>
@@ -1357,6 +1359,12 @@ export default function AdminDashboardPage() {
                   </div>
 
                   <div className="pt-2 border-t border-hairline/60 text-xs text-subtle space-y-1 font-mono">
+                    {selectedTeamForDetails.member2_email && (
+                      <div>
+                        <span className="text-muted">Email:</span>{" "}
+                        <span className="text-content">{selectedTeamForDetails.member2_email}</span>
+                      </div>
+                    )}
                     <div>
                       <span className="text-muted">College / Roll ID:</span>{" "}
                       <strong className="text-content">{selectedTeamForDetails.member2_college_id || "Not Provided"}</strong>
@@ -1365,6 +1373,17 @@ export default function AdminDashboardPage() {
                       <span className="text-muted">Affiliation:</span> Verified Team Member
                     </div>
                   </div>
+
+                  {selectedTeamForDetails.member2_email && (
+                    <div className="pt-2">
+                      <a
+                        href={`mailto:${selectedTeamForDetails.member2_email}`}
+                        className="px-3 py-1 text-[11px] border border-hairline bg-base hover:bg-panel transition-colors text-content"
+                      >
+                        ✉ Send Email
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {selectedTeamForDetails.member3_name && (
@@ -1382,6 +1401,12 @@ export default function AdminDashboardPage() {
                     </div>
 
                     <div className="pt-2 border-t border-hairline/60 text-xs text-subtle space-y-1 font-mono">
+                      {selectedTeamForDetails.member3_email && (
+                        <div>
+                          <span className="text-muted">Email:</span>{" "}
+                          <span className="text-content">{selectedTeamForDetails.member3_email}</span>
+                        </div>
+                      )}
                       <div>
                         <span className="text-muted">College / Roll ID:</span>{" "}
                         <strong className="text-content">{selectedTeamForDetails.member3_college_id || "Not Provided"}</strong>
@@ -1390,6 +1415,17 @@ export default function AdminDashboardPage() {
                         <span className="text-muted">Affiliation:</span> Verified Team Member
                       </div>
                     </div>
+
+                    {selectedTeamForDetails.member3_email && (
+                      <div className="pt-2">
+                        <a
+                          href={`mailto:${selectedTeamForDetails.member3_email}`}
+                          className="px-3 py-1 text-[11px] border border-hairline bg-base hover:bg-panel transition-colors text-content"
+                        >
+                          ✉ Send Email
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1408,6 +1444,12 @@ export default function AdminDashboardPage() {
                     </div>
 
                     <div className="pt-2 border-t border-hairline/60 text-xs text-subtle space-y-1 font-mono">
+                      {selectedTeamForDetails.member4_email && (
+                        <div>
+                          <span className="text-muted">Email:</span>{" "}
+                          <span className="text-content">{selectedTeamForDetails.member4_email}</span>
+                        </div>
+                      )}
                       <div>
                         <span className="text-muted">College / Roll ID:</span>{" "}
                         <strong className="text-content">{selectedTeamForDetails.member4_college_id || "Not Provided"}</strong>
@@ -1416,6 +1458,17 @@ export default function AdminDashboardPage() {
                         <span className="text-muted">Affiliation:</span> Verified Team Member
                       </div>
                     </div>
+
+                    {selectedTeamForDetails.member4_email && (
+                      <div className="pt-2">
+                        <a
+                          href={`mailto:${selectedTeamForDetails.member4_email}`}
+                          className="px-3 py-1 text-[11px] border border-hairline bg-base hover:bg-panel transition-colors text-content"
+                        >
+                          ✉ Send Email
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

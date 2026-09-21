@@ -82,7 +82,7 @@ def register_team(
             ]
             submitted_college_ids = [cid for cid in submitted_college_ids if cid]
 
-            # 1. Intra-team duplicate check
+            # 1. Intra-team duplicate college ID check
             seen_ids = set()
             for cid in submitted_college_ids:
                 if cid in seen_ids:
@@ -115,6 +115,48 @@ def register_team(
                     detail=f"College ID / Roll Number '{existing_dup['college_id']}' is already registered under team '{existing_dup['team_name']}' ({existing_dup['team_code']}). A student can only be part of one team.",
                 )
 
+            # Validate duplicate email addresses across all submitted members
+            submitted_emails = [
+                team_data.leader_email.strip().lower(),
+                team_data.member2_email.strip().lower() if team_data.member2_email else None,
+                team_data.member3_email.strip().lower() if team_data.member3_email else None,
+                team_data.member4_email.strip().lower() if team_data.member4_email else None,
+            ]
+            submitted_emails = [em for em in submitted_emails if em]
+
+            # 1. Intra-team duplicate email check
+            seen_emails = set()
+            for em in submitted_emails:
+                if em in seen_emails:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Duplicate email address '{em}' submitted within the same team registration.",
+                    )
+                seen_emails.add(em)
+
+            # 2. Cross-team duplicate email check
+            cur.execute(
+                """
+                SELECT team_name, team_code, email FROM (
+                    SELECT team_name, team_code, LOWER(leader_email) AS email FROM teams WHERE leader_email IS NOT NULL
+                    UNION ALL
+                    SELECT team_name, team_code, LOWER(member2_email) AS email FROM teams WHERE member2_email IS NOT NULL
+                    UNION ALL
+                    SELECT team_name, team_code, LOWER(member3_email) AS email FROM teams WHERE member3_email IS NOT NULL
+                    UNION ALL
+                    SELECT team_name, team_code, LOWER(member4_email) AS email FROM teams WHERE member4_email IS NOT NULL
+                ) existing_emails
+                WHERE email = ANY(%s);
+                """,
+                (submitted_emails,),
+            )
+            existing_email_dup = cur.fetchone()
+            if existing_email_dup:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Email address '{existing_email_dup['email']}' is already registered under team '{existing_email_dup['team_name']}' ({existing_email_dup['team_code']}).",
+                )
+
             # Validate problem_statement_id if provided
             if team_data.problem_statement_id:
                 cur.execute(
@@ -130,15 +172,14 @@ def register_team(
             team_code = generate_unique_team_code(cur)
             confirmation_token = secrets.token_urlsafe(32)
 
-
             insert_query = """
                 INSERT INTO teams (
                     team_name, team_code, team_size,
                     leader_name, leader_email, leader_phone, leader_college_id,
                     leader_department, leader_year,
-                    member2_name, member2_college_id,
-                    member3_name, member3_college_id,
-                    member4_name, member4_college_id,
+                    member2_name, member2_college_id, member2_email,
+                    member3_name, member3_college_id, member3_email,
+                    member4_name, member4_college_id, member4_email,
                     problem_statement_id,
                     attendance_day1, attendance_day2,
                     confirmed, confirmation_token
@@ -146,9 +187,9 @@ def register_team(
                     %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s,
-                    %s, %s,
-                    %s, %s,
-                    %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
                     %s,
                     FALSE, FALSE,
                     FALSE, %s
@@ -161,17 +202,20 @@ def register_team(
                     team_code,
                     team_data.team_size,
                     team_data.leader_name.strip(),
-                    team_data.leader_email.strip(),
+                    team_data.leader_email.strip().lower(),
                     team_data.leader_phone.strip(),
                     team_data.leader_college_id.strip(),
                     team_data.leader_department.strip(),
                     team_data.leader_year.strip(),
                     team_data.member2_name.strip() if team_data.member2_name else None,
                     team_data.member2_college_id.strip() if team_data.member2_college_id else None,
+                    team_data.member2_email.strip().lower() if team_data.member2_email else None,
                     team_data.member3_name.strip() if team_data.member3_name else None,
                     team_data.member3_college_id.strip() if team_data.member3_college_id else None,
+                    team_data.member3_email.strip().lower() if team_data.member3_email else None,
                     team_data.member4_name.strip() if team_data.member4_name else None,
                     team_data.member4_college_id.strip() if team_data.member4_college_id else None,
+                    team_data.member4_email.strip().lower() if team_data.member4_email else None,
                     str(team_data.problem_statement_id) if team_data.problem_statement_id else None,
                     confirmation_token,
                 ),
@@ -267,73 +311,6 @@ def confirm_team(
 
 
 @router.get(
-    "/mine",
-    status_code=status.HTTP_200_OK,
-    summary="Get team profile for authenticated leader or member",
-)
-def get_my_team_profile(
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    """
-    Returns team details, member roster, and problem statement track for the logged-in user.
-    """
-    email = current_user["email"].strip().lower()
-    team_id = current_user.get("team_id")
-
-    try:
-        with db.cursor(cursor_factory=RealDictCursor) as cur:
-            # Query by team_id or leader email
-            cur.execute(
-                """
-                SELECT t.*, ps.code AS problem_code, ps.title AS problem_title, ps.domain AS problem_domain
-                FROM teams t
-                LEFT JOIN problem_statements ps ON t.problem_statement_id = ps.id
-                WHERE t.id = %s OR LOWER(t.leader_email) = LOWER(%s);
-                """,
-                (team_id or "00000000-0000-0000-0000-000000000000", email),
-            )
-            team = cur.fetchone()
-
-            if not team:
-                # Return graceful provisional profile for directly added team leaders
-                return {
-                    "id": str(current_user["id"]),
-                    "team_name": f"{current_user.get('name', 'My')}'s Team",
-                    "team_code": f"CS-{current_user['email'][:4].upper()}",
-                    "team_size": 1,
-                    "leader_name": current_user.get("name", "Team Leader"),
-                    "leader_email": current_user["email"],
-                    "leader_phone": "",
-                    "leader_college_id": "DIRECT-PROV",
-                    "leader_department": "Engineering",
-                    "leader_year": "2026",
-                    "member2_name": None,
-                    "member2_college_id": None,
-                    "member3_name": None,
-                    "member3_college_id": None,
-                    "member4_name": None,
-                    "member4_college_id": None,
-                    "confirmed": True,
-                    "attendance_day1": False,
-                    "attendance_day2": False,
-                    "problem_code": "TBA",
-                    "problem_title": "Track to be chosen",
-                    "problem_domain": "Cybersecurity",
-                }
-
-            res = dict(team)
-            res["id"] = str(res["id"])
-            return res
-    except psycopg2.Error as db_err:
-        logger.error(f"Database error retrieving leader team profile: {db_err}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve team profile",
-        )
-
-
-@router.get(
     "/",
     response_model=List[TeamOut],
     status_code=status.HTTP_200_OK,
@@ -363,6 +340,73 @@ def list_teams(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error retrieving teams",
+        )
+
+
+@router.get(
+    "/mine",
+    response_model=TeamOut,
+    status_code=status.HTTP_200_OK,
+    summary="Get active team for the logged-in team leader or member",
+)
+def get_my_team(
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """
+    Returns the authenticated user's team details.
+    If no team is found and user is a leader/member, auto-provisions a starter team.
+    """
+    email = current_user.get("email", "").strip().lower()
+    user_id = current_user.get("id")
+    name = current_user.get("name") or "Team Leader"
+
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # 1. Lookup by leader_email, member emails, or team id
+            cur.execute(
+                """
+                SELECT * FROM teams 
+                WHERE LOWER(leader_email) = %s 
+                   OR LOWER(COALESCE(member2_email, '')) = %s
+                   OR LOWER(COALESCE(member3_email, '')) = %s
+                   OR LOWER(COALESCE(member4_email, '')) = %s
+                   OR id::text = %s;
+                """,
+                (email, email, email, email, str(user_id)),
+            )
+            team = cur.fetchone()
+
+            if not team:
+                # Auto-assign team_code and provision starter team
+                team_code = generate_unique_team_code(cur)
+                team_name = f"{name}'s Team"
+                insert_query = """
+                    INSERT INTO teams (
+                        team_name, team_code, team_size,
+                        leader_name, leader_email, leader_phone, leader_college_id,
+                        leader_department, leader_year,
+                        attendance_day1, attendance_day2, confirmed
+                    ) VALUES (
+                        %s, %s, 2,
+                        %s, %s, 'N/A', %s,
+                        'General', '1st Year',
+                        FALSE, FALSE, TRUE
+                    ) RETURNING *;
+                """
+                cur.execute(
+                    insert_query,
+                    (team_name, team_code, name, email, f"ID-{team_code}"),
+                )
+                team = cur.fetchone()
+                db.commit()
+
+            return dict(team)
+    except Exception as exc:
+        logger.error(f"Error fetching/auto-provisioning team for {email}: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve team details",
         )
 
 

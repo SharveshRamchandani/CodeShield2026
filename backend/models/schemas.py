@@ -8,13 +8,13 @@ from pydantic import BaseModel, Field, EmailStr
 # User & Auth Schemas
 # ==========================================
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 
 class UserOut(BaseModel):
     id: str
-    email: EmailStr
+    email: str
     role: str
     name: str
     team_code: Optional[str] = None
@@ -26,13 +26,13 @@ class UserOut(BaseModel):
 
 
 class UserRoleUpdate(BaseModel):
-    role: str = Field(..., description="Role to assign: 'admin', 'judge', 'leader', or 'member'")
+    role: str = Field(..., description="Role to assign: 'admin', 'judge', or 'leader'")
 
 
 class UserCreateAdmin(BaseModel):
-    email: EmailStr
+    email: str
     name: str
-    role: str = Field("judge", description="Role to assign: 'admin', 'judge', 'leader', or 'member'")
+    role: Optional[str] = Field("judge", description="Role to assign: 'admin', 'judge', or 'leader'")
     password: Optional[str] = "codeshield2026"
 
 
@@ -92,17 +92,20 @@ class TeamCreate(BaseModel):
     team_name: str
     team_size: int = Field(..., ge=2, le=4, description="Team size between 2 and 4 members")
     leader_name: str
-    leader_email: EmailStr
+    leader_email: str
     leader_phone: str
     leader_college_id: str
     leader_department: str
     leader_year: str
     member2_name: Optional[str] = None
     member2_college_id: Optional[str] = None
+    member2_email: Optional[str] = None
     member3_name: Optional[str] = None
     member3_college_id: Optional[str] = None
+    member3_email: Optional[str] = None
     member4_name: Optional[str] = None
     member4_college_id: Optional[str] = None
+    member4_email: Optional[str] = None
     problem_statement_id: Optional[UUID] = None
 
 

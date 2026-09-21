@@ -416,6 +416,39 @@ def create_admin_user(
                 (email, password_hash, role, name),
             )
             created = cur.fetchone()
+
+            team_code = None
+            team_name = None
+
+            # If user is a leader or member, auto-assign a team code and starter team if not existing
+            if role in ["leader", "member"]:
+                cur.execute("SELECT team_code, team_name FROM teams WHERE LOWER(leader_email) = LOWER(%s);", (email,))
+                existing_team = cur.fetchone()
+                if not existing_team:
+                    import secrets, string
+                    chars = "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(4))
+                    team_code = f"CS-{chars}"
+                    team_name = f"{name}'s Team"
+                    cur.execute(
+                        """
+                        INSERT INTO teams (
+                            team_name, team_code, team_size,
+                            leader_name, leader_email, leader_phone, leader_college_id,
+                            leader_department, leader_year,
+                            attendance_day1, attendance_day2, confirmed
+                        ) VALUES (
+                            %s, %s, 2,
+                            %s, %s, 'N/A', %s,
+                            'General', '1st Year',
+                            FALSE, FALSE, TRUE
+                        );
+                        """,
+                        (team_name, team_code, name, email, f"ID-{team_code}"),
+                    )
+                else:
+                    team_code = existing_team["team_code"]
+                    team_name = existing_team["team_name"]
+
             db.commit()
 
             return {
@@ -423,6 +456,8 @@ def create_admin_user(
                 "email": created["email"],
                 "role": created["role"],
                 "name": created["name"],
+                "team_code": team_code,
+                "team_name": team_name,
                 "created_at": created["created_at"],
             }
     except HTTPException:
@@ -571,9 +606,9 @@ def export_teams_csv(
                     t.team_code, t.team_name, t.confirmed, t.team_size,
                     t.leader_name, t.leader_email, t.leader_phone,
                     t.leader_college_id, t.leader_department, t.leader_year,
-                    t.member2_name, t.member2_college_id,
-                    t.member3_name, t.member3_college_id,
-                    t.member4_name, t.member4_college_id,
+                    t.member2_name, t.member2_college_id, t.member2_email,
+                    t.member3_name, t.member3_college_id, t.member3_email,
+                    t.member4_name, t.member4_college_id, t.member4_email,
                     ps.code AS problem_code, ps.title AS problem_title, ps.domain AS problem_domain,
                     t.attendance_day1, t.attendance_day2, t.created_at
                 FROM teams t
@@ -589,9 +624,9 @@ def export_teams_csv(
             writer.writerow([
                 "Team Code", "Team Name", "Confirmed", "Team Size",
                 "Leader Name", "Leader Email", "Leader Phone", "College ID", "Department", "Year",
-                "Member 2 Name", "Member 2 College ID",
-                "Member 3 Name", "Member 3 College ID",
-                "Member 4 Name", "Member 4 College ID",
+                "Member 2 Name", "Member 2 College ID", "Member 2 Email",
+                "Member 3 Name", "Member 3 College ID", "Member 3 Email",
+                "Member 4 Name", "Member 4 College ID", "Member 4 Email",
                 "PS Code", "PS Title", "Track",
                 "Day 1 Attendance", "Day 2 Attendance", "Registered At"
             ])
@@ -610,10 +645,13 @@ def export_teams_csv(
                     r["leader_year"],
                     r["member2_name"] or "",
                     r["member2_college_id"] or "",
+                    r["member2_email"] or "",
                     r["member3_name"] or "",
                     r["member3_college_id"] or "",
+                    r["member3_email"] or "",
                     r["member4_name"] or "",
                     r["member4_college_id"] or "",
+                    r["member4_email"] or "",
                     r["problem_code"] or "",
                     r["problem_title"] or "",
                     r["problem_domain"] or "",

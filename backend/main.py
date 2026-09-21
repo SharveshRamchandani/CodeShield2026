@@ -65,12 +65,10 @@ app.add_api_route(
 
 
 @app.get("/health", tags=["Health"])
+@app.get("/api/health", tags=["Health"], include_in_schema=False)
 def health_check():
-    return {
-        "status": "healthy",
-        "service": "CodeShield 2026 Backend",
-        "version": "1.0.0",
-    }
+    """Ultra-lightweight keep-alive & cold-start ping endpoint (No DB, no auth)."""
+    return {"ok": True}
 
 
 if __name__ == "__main__":

@@ -1,12 +1,15 @@
 import io
 import csv
 import logging
+import secrets
 from typing import List, Dict, Any, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status, BackgroundTasks
 from psycopg2.extras import RealDictCursor
 import psycopg2
 
+import json
+from datetime import datetime, timezone
 from models.schemas import (
     TeamOut,
     AttendanceUpdate,
@@ -14,9 +17,14 @@ from models.schemas import (
     UserRoleUpdate,
     UserCreateAdmin,
     TeamConfirmUpdate,
+    SubmissionWindowSettings,
+    SubmissionCreate,
+    SubmissionOut,
+    SystemSettingsOut,
 )
 from database import get_db
 from utils.auth import require_role, hash_password, get_current_user
+from utils.mailer import send_team_confirmation_email_task
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +230,146 @@ def update_team_confirmation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update team confirmation",
+        )
+
+
+@router.post(
+    "/teams/{team_id}/resend-confirmation",
+    status_code=status.HTTP_200_OK,
+    summary="Resend registration confirmation email to team leader (Admin)",
+)
+def resend_team_confirmation(
+    team_id: UUID,
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),
+):
+    """
+    Resends confirmation email with verification and dashboard links to the team leader.
+    Dispatches via FastAPI BackgroundTasks and updates email_sent flag.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT 
+                    t.*, 
+                    ps.code AS problem_code, 
+                    ps.title AS problem_title 
+                FROM teams t 
+                LEFT JOIN problem_statements ps ON t.problem_statement_id = ps.id
+                WHERE t.id = %s;
+            """, (str(team_id),))
+            team = cur.fetchone()
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Team not found.",
+                )
+
+            members = [f"{team['leader_name']} (Leader)"]
+            if team.get("member2_name"):
+                members.append(f"{team['member2_name']} ({team.get('member2_college_id') or 'Member 2'})")
+            if team.get("member3_name"):
+                members.append(f"{team['member3_name']} ({team.get('member3_college_id') or 'Member 3'})")
+            if team.get("member4_name"):
+                members.append(f"{team['member4_name']} ({team.get('member4_college_id') or 'Member 4'})")
+
+            background_tasks.add_task(
+                send_team_confirmation_email_task,
+                team_id=str(team["id"]),
+                leader_email=team["leader_email"].strip().lower(),
+                leader_name=team["leader_name"].strip(),
+                team_name=team["team_name"].strip(),
+                team_code=team["team_code"],
+                members=members,
+                problem_statement_code=team.get("problem_code"),
+                problem_statement_title=team.get("problem_title"),
+            )
+
+            return {
+                "success": True,
+                "message": f"Registration email queued successfully for {team['leader_email']}.",
+                "team_code": team["team_code"],
+                "leader_email": team["leader_email"],
+            }
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error resending confirmation: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to queue confirmation email",
+        )
+
+
+@router.post(
+    "/teams/send-all-confirmation",
+    status_code=status.HTTP_200_OK,
+    summary="Send confirmation and registration details email to all registered teams (Admin)",
+)
+def send_all_teams_confirmation(
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),
+):
+    """
+    Broadcasts registration details and confirmation emails to all registered team leaders.
+    Queues tasks via FastAPI BackgroundTasks.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT 
+                    t.*, 
+                    ps.code AS problem_code, 
+                    ps.title AS problem_title 
+                FROM teams t 
+                LEFT JOIN problem_statements ps ON t.problem_statement_id = ps.id
+                ORDER BY t.created_at ASC;
+            """)
+            teams = cur.fetchall()
+
+            if not teams:
+                return {
+                    "success": True,
+                    "count": 0,
+                    "message": "No registered teams found to notify.",
+                }
+
+            queued_count = 0
+            for team in teams:
+                members = [f"{team['leader_name']} (Leader)"]
+                if team.get("member2_name"):
+                    members.append(f"{team['member2_name']} ({team.get('member2_college_id') or 'Member 2'})")
+                if team.get("member3_name"):
+                    members.append(f"{team['member3_name']} ({team.get('member3_college_id') or 'Member 3'})")
+                if team.get("member4_name"):
+                    members.append(f"{team['member4_name']} ({team.get('member4_college_id') or 'Member 4'})")
+
+                background_tasks.add_task(
+                    send_team_confirmation_email_task,
+                    team_id=str(team["id"]),
+                    leader_email=team["leader_email"].strip().lower(),
+                    leader_name=team["leader_name"].strip(),
+                    team_name=team["team_name"].strip(),
+                    team_code=team["team_code"],
+                    members=members,
+                    problem_statement_code=team.get("problem_code"),
+                    problem_statement_title=team.get("problem_title"),
+                )
+                queued_count += 1
+
+            return {
+                "success": True,
+                "count": queued_count,
+                "message": f"Successfully queued registration emails for {queued_count} teams.",
+            }
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error queuing emails for all teams: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to queue emails for all teams",
         )
 
 
@@ -603,7 +751,7 @@ def export_teams_csv(
         with db.cursor(cursor_factory=RealDictCursor) as cur:
             query = """
                 SELECT
-                    t.team_code, t.team_name, t.confirmed, t.team_size,
+                    t.team_code, t.team_name, t.confirmed, t.email_sent, t.team_size,
                     t.leader_name, t.leader_email, t.leader_phone,
                     t.leader_college_id, t.leader_department, t.leader_year,
                     t.member2_name, t.member2_college_id, t.member2_email,
@@ -622,7 +770,7 @@ def export_teams_csv(
             writer = csv.writer(output)
 
             writer.writerow([
-                "Team Code", "Team Name", "Confirmed", "Team Size",
+                "Team Code", "Team Name", "Confirmed", "Email Sent", "Team Size",
                 "Leader Name", "Leader Email", "Leader Phone", "College ID", "Department", "Year",
                 "Member 2 Name", "Member 2 College ID", "Member 2 Email",
                 "Member 3 Name", "Member 3 College ID", "Member 3 Email",
@@ -636,6 +784,7 @@ def export_teams_csv(
                     r["team_code"],
                     r["team_name"],
                     "Yes" if r["confirmed"] else "No",
+                    "Yes" if r.get("email_sent") else "No",
                     r["team_size"],
                     r["leader_name"],
                     r["leader_email"],
@@ -738,4 +887,174 @@ def export_scores_csv(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to export scores CSV",
+        )
+
+
+# =========================================================================
+# 7. System Settings & Submission Window Management (Admin)
+# =========================================================================
+
+@router.get(
+    "/settings",
+    response_model=SystemSettingsOut,
+    status_code=status.HTTP_200_OK,
+    summary="Get hackathon system settings and submission window config (Admin)",
+)
+def get_system_settings(
+    db=Depends(get_db),
+):
+    """
+    Returns system settings including submission window opens_at and closes_at.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT key, value FROM system_settings WHERE key = 'submission_window';")
+            row = cur.fetchone()
+            val = row["value"] if row and row.get("value") else {}
+            if isinstance(val, str):
+                try:
+                    val = json.loads(val)
+                except Exception:
+                    val = {}
+            return {
+                "submission_window": {
+                    "opens_at": val.get("opens_at"),
+                    "closes_at": val.get("closes_at"),
+                }
+            }
+    except Exception as exc:
+        logger.error(f"Error fetching system settings: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve system settings",
+        )
+
+
+@router.patch(
+    "/settings/submission-window",
+    response_model=SystemSettingsOut,
+    status_code=status.HTTP_200_OK,
+    summary="Update hackathon submission window (Admin)",
+)
+def update_submission_window(
+    window_data: SubmissionWindowSettings,
+    db=Depends(get_db),
+):
+    """
+    Updates the submission window opens_at and closes_at timestamps.
+    Changes take effect live immediately without requiring server restarts.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            payload = {
+                "opens_at": window_data.opens_at.isoformat() if window_data.opens_at else None,
+                "closes_at": window_data.closes_at.isoformat() if window_data.closes_at else None,
+            }
+            cur.execute(
+                """
+                INSERT INTO system_settings (key, value, updated_at)
+                VALUES ('submission_window', %s::jsonb, NOW())
+                ON CONFLICT (key) DO UPDATE
+                SET value = EXCLUDED.value, updated_at = NOW()
+                RETURNING value;
+                """,
+                (json.dumps(payload),),
+            )
+            db.commit()
+            return {
+                "submission_window": {
+                    "opens_at": window_data.opens_at,
+                    "closes_at": window_data.closes_at,
+                }
+            }
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error updating submission window: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update submission window",
+        )
+
+
+@router.put(
+    "/submissions/{team_id}",
+    response_model=SubmissionOut,
+    status_code=status.HTTP_200_OK,
+    summary="Admin override to create or update any team's submission deliverables (Bypasses window lock)",
+)
+def admin_override_team_submission(
+    team_id: UUID,
+    submission_data: SubmissionCreate,
+    db=Depends(get_db),
+):
+    """
+    Allows administrators to edit or create project deliverables for any team,
+    bypassing submission window deadline locks.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, team_name, team_code FROM teams WHERE id = %s;", (str(team_id),))
+            team = cur.fetchone()
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Team not found.",
+                )
+
+            cur.execute("SELECT id FROM submissions WHERE team_id = %s;", (str(team_id),))
+            existing = cur.fetchone()
+
+            if existing:
+                cur.execute(
+                    """
+                    UPDATE submissions
+                    SET idea_title = %s,
+                        idea_description = %s,
+                        repo_url = %s,
+                        deck_file_url = %s,
+                        submitted_at = NOW()
+                    WHERE id = %s
+                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
+                    """,
+                    (
+                        submission_data.idea_title.strip(),
+                        submission_data.idea_description.strip(),
+                        submission_data.repo_url.strip() if submission_data.repo_url else None,
+                        submission_data.deck_file_url.strip() if submission_data.deck_file_url else None,
+                        existing["id"],
+                    ),
+                )
+                saved = cur.fetchone()
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO submissions (team_id, idea_title, idea_description, repo_url, deck_file_url)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
+                    """,
+                    (
+                        str(team_id),
+                        submission_data.idea_title.strip(),
+                        submission_data.idea_description.strip(),
+                        submission_data.repo_url.strip() if submission_data.repo_url else None,
+                        submission_data.deck_file_url.strip() if submission_data.deck_file_url else None,
+                    ),
+                )
+                saved = cur.fetchone()
+
+            db.commit()
+            res = dict(saved)
+            res["team_name"] = team["team_name"]
+            res["team_code"] = team["team_code"]
+            res["is_locked"] = False
+            return res
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Error in admin submission override: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update team submission via admin override",
         )

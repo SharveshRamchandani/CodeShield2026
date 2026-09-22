@@ -115,6 +115,7 @@ class TeamOut(TeamCreate):
     attendance_day1: bool = False
     attendance_day2: bool = False
     confirmed: bool = False
+    email_sent: bool = False
     created_at: datetime
 
     class Config:
@@ -151,6 +152,11 @@ class SubmissionCreate(BaseModel):
     deck_file_url: Optional[str] = None
 
 
+class SubmissionWindowSettings(BaseModel):
+    opens_at: Optional[datetime] = None
+    closes_at: Optional[datetime] = None
+
+
 class SubmissionOut(SubmissionCreate):
     id: UUID
     submitted_at: datetime
@@ -158,9 +164,16 @@ class SubmissionOut(SubmissionCreate):
     team_code: Optional[str] = None
     problem_statement_code: Optional[str] = None
     problem_statement_title: Optional[str] = None
+    is_locked: bool = False
+    opens_at: Optional[datetime] = None
+    closes_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class SystemSettingsOut(BaseModel):
+    submission_window: SubmissionWindowSettings
 
 
 # ==========================================

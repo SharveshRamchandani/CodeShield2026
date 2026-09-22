@@ -18,6 +18,60 @@ router = APIRouter(tags=["Submissions"])
 # Team Leader Submissions (require_role("leader"))
 # =========================================================================
 
+from datetime import datetime, timezone
+import json
+
+def get_submission_window_status(cur, is_admin: bool = False):
+    """
+    Checks if current UTC time falls within the configured submission window.
+    Returns dictionary with is_locked, opens_at, closes_at, and reason.
+    """
+    try:
+        cur.execute("SELECT value FROM system_settings WHERE key = 'submission_window';")
+        row = cur.fetchone()
+    except Exception:
+        row = None
+
+    opens_at = None
+    closes_at = None
+    if row and row.get("value"):
+        val = row["value"]
+        if isinstance(val, str):
+            try:
+                val = json.loads(val)
+            except Exception:
+                val = {}
+        if val.get("opens_at"):
+            try:
+                opens_at = datetime.fromisoformat(str(val["opens_at"]).replace("Z", "+00:00"))
+            except Exception:
+                pass
+        if val.get("closes_at"):
+            try:
+                closes_at = datetime.fromisoformat(str(val["closes_at"]).replace("Z", "+00:00"))
+            except Exception:
+                pass
+
+    now = datetime.now(timezone.utc)
+    is_locked = False
+    reason = None
+
+    if opens_at and now < opens_at:
+        is_locked = True
+        reason = f"Submissions have not opened yet. Window opens at {opens_at.strftime('%Y-%m-%d %H:%M:%S UTC')}."
+    elif closes_at and now > closes_at:
+        is_locked = True
+        reason = f"Submission deadline has passed. Submissions closed at {closes_at.strftime('%Y-%m-%d %H:%M:%S UTC')}."
+
+    return {
+        "is_locked": is_locked if not is_admin else False,
+        "raw_is_locked": is_locked,
+        "opens_at": opens_at,
+        "closes_at": closes_at,
+        "reason": reason,
+    }
+
+
 @router.get(
     "/mine",
     response_model=Optional[SubmissionOut],
@@ -29,12 +83,15 @@ def get_my_team_submission(
     db=Depends(get_db),
 ):
     """
-    Returns submission deliverable for the authenticated team leader's team.
+    Returns submission deliverable for the authenticated team leader's team along with submission window lock status.
     """
     team_id = current_user["id"]
+    is_admin = current_user.get("role") == "admin"
 
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
+            window_status = get_submission_window_status(cur, is_admin=is_admin)
+
             query = """
                 SELECT
                     s.id, s.team_id, s.idea_title, s.idea_description,
@@ -51,7 +108,11 @@ def get_my_team_submission(
             row = cur.fetchone()
             if not row:
                 return None
-            return dict(row)
+            res = dict(row)
+            res["is_locked"] = window_status["is_locked"]
+            res["opens_at"] = window_status["opens_at"]
+            res["closes_at"] = window_status["closes_at"]
+            return res
     except psycopg2.Error as db_err:
         logger.error(f"Database error fetching leader submission: {db_err}")
         raise HTTPException(
@@ -73,11 +134,21 @@ def upsert_my_team_submission(
 ):
     """
     Creates or updates project deliverables scoped strictly to the authenticated team leader's team.
+    Enforces server-side submission window deadline lock (participants are locked out, admins bypass).
     """
     team_id = current_user["id"]
+    is_admin = current_user.get("role") == "admin"
 
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # Enforce server-side submission window lock for non-admin participants
+            window_status = get_submission_window_status(cur, is_admin=is_admin)
+            if window_status["raw_is_locked"] and not is_admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=window_status["reason"] or "Submissions are closed. The deadline has passed.",
+                )
+
             # Check team
             cur.execute("SELECT id, team_name, team_code FROM teams WHERE id = %s;", (team_id,))
             team = cur.fetchone()
@@ -133,6 +204,9 @@ def upsert_my_team_submission(
             res = dict(saved)
             res["team_name"] = team["team_name"]
             res["team_code"] = team["team_code"]
+            res["is_locked"] = window_status["is_locked"]
+            res["opens_at"] = window_status["opens_at"]
+            res["closes_at"] = window_status["closes_at"]
             return res
     except HTTPException:
         db.rollback()

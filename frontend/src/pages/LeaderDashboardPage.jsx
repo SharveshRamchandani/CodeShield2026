@@ -307,6 +307,24 @@ export default function LeaderDashboardPage() {
                   </p>
                 </div>
 
+                {/* Submission Window Lock Banner */}
+                {submission?.is_locked && (
+                  <div className="p-3.5 border border-amber/50 bg-amber/10 text-amber text-xs font-mono space-y-1">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <span>🔒</span>
+                      <span>SUBMISSIONS LOCKED (READ ONLY)</span>
+                    </div>
+                    <p className="text-[11px] text-content/80 leading-relaxed">
+                      The project submission deadline has passed. Deliverables are locked in read-only mode for judge evaluations.
+                      {submission.closes_at && (
+                        <span className="block text-muted text-[10px] mt-0.5">
+                          Cutoff: {new Date(submission.closes_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
+
                 {/* Project Idea Title */}
                 <div className="space-y-1.5">
                   <label htmlFor="idea_title" className="text-xs uppercase text-subtle font-semibold block">
@@ -318,9 +336,10 @@ export default function LeaderDashboardPage() {
                     name="idea_title"
                     value={formData.idea_title}
                     onChange={handleInputChange}
+                    disabled={saving || Boolean(submission?.is_locked)}
                     placeholder="e.g. SentinelZero: Autonomous Threat Detection"
                     required
-                    className="w-full px-3.5 py-2.5 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    className="w-full px-3.5 py-2.5 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -335,9 +354,10 @@ export default function LeaderDashboardPage() {
                     name="idea_description"
                     value={formData.idea_description}
                     onChange={handleInputChange}
+                    disabled={saving || Boolean(submission?.is_locked)}
                     placeholder="Describe your architecture, the problem addressed, key novelty, tech stack, and cybersecurity resilience..."
                     required
-                    className="w-full px-3.5 py-2.5 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none leading-relaxed"
+                    className="w-full px-3.5 py-2.5 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -352,8 +372,9 @@ export default function LeaderDashboardPage() {
                     name="repo_url"
                     value={formData.repo_url}
                     onChange={handleInputChange}
+                    disabled={saving || Boolean(submission?.is_locked)}
                     placeholder="https://github.com/username/project"
-                    className="w-full px-3.5 py-2.5 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    className="w-full px-3.5 py-2.5 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                   <span className="text-[10px] text-muted">
                     Ensure the repository is public or accessible to panel judges.
@@ -371,22 +392,25 @@ export default function LeaderDashboardPage() {
                     name="deck_file_url"
                     value={formData.deck_file_url}
                     onChange={handleInputChange}
+                    disabled={saving || Boolean(submission?.is_locked)}
                     placeholder="https://docs.google.com/presentation/d/..."
-                    className="w-full px-3.5 py-2.5 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    className="w-full px-3.5 py-2.5 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                   />
                 </div>
 
                 {/* Submit Action */}
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="w-full py-3 text-xs font-bold uppercase tracking-wider text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  disabled={saving || Boolean(submission?.is_locked)}
+                  className="w-full py-3 text-xs font-bold uppercase tracking-wider text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {saving ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent animate-spin" />
                       <span>Saving Deliverables...</span>
                     </>
+                  ) : submission?.is_locked ? (
+                    <span>🔒 Submissions Closed</span>
                   ) : (
                     <span>{submission ? "✓ Update Project Deliverables" : "⚡ Submit Deliverables &rarr;"}</span>
                   )}

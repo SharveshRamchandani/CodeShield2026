@@ -11,9 +11,10 @@ if os.path.exists(env_path):
 else:
     load_dotenv()
 
+from database import init_db_migrations
 from routes.auth import router as auth_router
 from routes.problem_statements import router as problem_statements_router
-from routes.teams import router as teams_router, register_team, confirm_team
+from routes.teams import router as teams_router, register_team
 from routes.submissions import router as submissions_router
 from routes.scores import router as scores_router
 from routes.admin import router as admin_router
@@ -23,6 +24,12 @@ app = FastAPI(
     description="Backend API services for CodeShield 2026 Hackathon (Cyber Club BIT)",
     version="1.0.0",
 )
+
+
+@app.on_event("startup")
+def on_startup():
+    init_db_migrations()
+
 
 # Configure CORS
 origins_env = os.getenv(
@@ -54,13 +61,6 @@ app.add_api_route(
     methods=["POST"],
     tags=["Teams & Registration"],
     summary="Register a new team (Alias)",
-)
-app.add_api_route(
-    "/api/confirm/{token}",
-    confirm_team,
-    methods=["GET"],
-    tags=["Teams & Registration"],
-    summary="Confirm team registration via email token (Alias)",
 )
 
 

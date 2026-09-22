@@ -12,7 +12,6 @@ import { wakeBackend } from "./api/client";
 import HomePage from "./pages/HomePage";
 import ProblemStatementsPage from "./pages/ProblemStatementsPage";
 import RegistrationPage from "./pages/RegistrationPage";
-import ConfirmationPage from "./pages/ConfirmationPage";
 import LoginPage from "./pages/LoginPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
 import JudgePage from "./pages/JudgePage";
@@ -39,7 +38,6 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/problem-statements" element={<ProblemStatementsPage />} />
               <Route path="/register" element={<RegistrationPage />} />
-              <Route path="/confirm/:token" element={<ConfirmationPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/coming-soon" element={<ComingSoonPage />} />
               <Route

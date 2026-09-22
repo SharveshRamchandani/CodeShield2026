@@ -10,3 +10,5 @@ resend
 httpx
 google-auth
 email-validator
+pytest
+pytest-mock

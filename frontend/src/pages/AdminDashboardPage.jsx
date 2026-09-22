@@ -36,6 +36,10 @@ export default function AdminDashboardPage() {
   const [rebalancing, setRebalancing] = useState(false);
   const [rebalanceResult, setRebalanceResult] = useState(null);
   const [downloadingExport, setDownloadingExport] = useState(null);
+  const [submissionWindow, setSubmissionWindow] = useState({ opens_at: "", closes_at: "" });
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [sendingEmailTeamId, setSendingEmailTeamId] = useState(null);
+  const [sendingAllEmails, setSendingAllEmails] = useState(false);
 
   // Auto-dismiss alert messages after 5 seconds
   useEffect(() => {
@@ -49,18 +53,26 @@ export default function AdminDashboardPage() {
   const loadAllAdminData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsData, teamsData, subsData, scoresData, usersData] = await Promise.all([
+      const [statsData, teamsData, subsData, scoresData, usersData, settingsData] = await Promise.all([
         apiClient.get("/api/admin/stats").catch(() => null),
         apiClient.get("/api/admin/teams").catch(() => []),
         apiClient.get("/api/submissions/").catch(() => []),
         apiClient.get("/api/scores/").catch(() => []),
         apiClient.get("/api/admin/users").catch(() => []),
+        apiClient.get("/api/admin/settings").catch(() => null),
       ]);
       setStats(statsData);
       setTeams(teamsData || []);
       setSubmissions(subsData || []);
       setScores(scoresData || []);
       setUsersList(usersData || []);
+
+      if (settingsData?.submission_window) {
+        setSubmissionWindow({
+          opens_at: settingsData.submission_window.opens_at ? settingsData.submission_window.opens_at.slice(0, 16) : "",
+          closes_at: settingsData.submission_window.closes_at ? settingsData.submission_window.closes_at.slice(0, 16) : "",
+        });
+      }
     } catch {
       setActionStatus({ type: "error", text: "Failed to load telemetry data from server." });
     } finally {
@@ -328,24 +340,85 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Trigger Judge Load Balancing Callback
-  const handleRebalanceJudges = async () => {
-    setRebalancing(true);
-    setRebalanceResult(null);
+  // Send Registration Details & Confirmation Email to Single Team
+  const handleSendEmailToTeam = async (teamId, leaderEmail, teamName) => {
+    setSendingEmailTeamId(teamId);
     try {
-      const res = await apiClient.post("/api/admin/rebalance-judges", {});
-      setRebalanceResult(res);
+      const res = await apiClient.post(`/api/admin/teams/${teamId}/resend-confirmation`);
+      setTeams((prev) =>
+        prev.map((t) => (t.id === teamId ? { ...t, email_sent: true } : t))
+      );
+      if (selectedTeamForDetails && selectedTeamForDetails.id === teamId) {
+        setSelectedTeamForDetails((prev) => ({ ...prev, email_sent: true }));
+      }
       setActionStatus({
         type: "success",
-        text: res.message || "Judge workload successfully rebalanced!",
+        text: res?.message || `Registration email queued for team '${teamName}' (${leaderEmail}).`,
       });
     } catch (err) {
       setActionStatus({
         type: "error",
-        text: err?.message || "Failed to trigger judge load balancing callback.",
+        text: err?.message || `Failed to send email to team '${teamName}'.`,
       });
     } finally {
-      setRebalancing(false);
+      setSendingEmailTeamId(null);
+    }
+  };
+
+  // Broadcast Confirmation / Details Email to All Registered Teams
+  const handleSendEmailToAllTeams = async () => {
+    if (!window.confirm(`Are you sure you want to send registration details and confirmation emails to all ${teams.length} registered teams?`)) {
+      return;
+    }
+
+    setSendingAllEmails(true);
+    try {
+      const res = await apiClient.post("/api/admin/teams/send-all-confirmation");
+      setTeams((prev) => prev.map((t) => ({ ...t, email_sent: true })));
+      setActionStatus({
+        type: "success",
+        text: res?.message || `Registration emails queued for all ${teams.length} teams.`,
+      });
+    } catch (err) {
+      setActionStatus({
+        type: "error",
+        text: err?.message || "Failed to broadcast emails to all teams.",
+      });
+    } finally {
+      setSendingAllEmails(false);
+    }
+  };
+
+  // Update Submission Window Settings Live
+  const handleSaveSubmissionWindow = async (customClosesAt = undefined, customOpensAt = undefined) => {
+    setSavingSettings(true);
+    try {
+      const opens = customOpensAt !== undefined ? customOpensAt : (submissionWindow.opens_at ? new Date(submissionWindow.opens_at).toISOString() : null);
+      const closes = customClosesAt !== undefined ? customClosesAt : (submissionWindow.closes_at ? new Date(submissionWindow.closes_at).toISOString() : null);
+
+      const res = await apiClient.patch("/api/admin/settings/submission-window", {
+        opens_at: opens,
+        closes_at: closes,
+      });
+
+      if (res?.submission_window) {
+        setSubmissionWindow({
+          opens_at: res.submission_window.opens_at ? res.submission_window.opens_at.slice(0, 16) : "",
+          closes_at: res.submission_window.closes_at ? res.submission_window.closes_at.slice(0, 16) : "",
+        });
+      }
+
+      setActionStatus({
+        type: "success",
+        text: "Submission window updated live. Changes take effect immediately.",
+      });
+    } catch (err) {
+      setActionStatus({
+        type: "error",
+        text: err.message || "Failed to update submission window.",
+      });
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -482,27 +555,111 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {stats?.track_distribution && stats.track_distribution.length > 0 && (
-              <div className="border border-hairline bg-panel p-5">
-                <div className="text-xs font-semibold text-cyan uppercase mb-4">
-                  // TRACK & PROBLEM STATEMENT REGISTRATION DIVERSITY
+            {/* Submission Window Controls Card */}
+            <div className="border border-hairline bg-panel p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-hairline/60 pb-3">
+                <div>
+                  <div className="text-xs font-semibold text-cyan uppercase">// LIVE SUBMISSION DEADLINE & WINDOW CONTROLS</div>
+                  <p className="text-[11px] text-muted mt-0.5">
+                    Controls whether team leaders can submit or edit project deliverables. Changes apply live without server restarts.
+                  </p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {stats.track_distribution.map((track) => (
-                    <div key={track.code} className="p-3 border border-hairline/60 bg-base/50 flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-bold text-cyan">{track.code}</span>
-                        <div className="text-[11px] text-content truncate max-w-[200px]">{track.title}</div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-sm font-bold text-content">{track.team_count}</span>
-                        <div className="text-[10px] text-muted">teams</div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-subtle font-mono uppercase">Current Status:</span>
+                  <span
+                    className={`px-2 py-0.5 text-[10px] font-bold border font-mono ${
+                      submissionWindow.closes_at && new Date(submissionWindow.closes_at) <= new Date()
+                        ? "border-amber bg-amber/10 text-amber"
+                        : "border-emerald-500 bg-emerald-950/40 text-emerald-300"
+                    }`}
+                  >
+                    {submissionWindow.closes_at && new Date(submissionWindow.closes_at) <= new Date()
+                      ? "🔒 LOCKED (DEADLINE PASSED)"
+                      : "⚡ OPEN FOR SUBMISSIONS"}
+                  </span>
                 </div>
               </div>
-            )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-subtle uppercase block">
+                    Opens At (Optional):
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={submissionWindow.opens_at}
+                    onChange={(e) => setSubmissionWindow({ ...submissionWindow, opens_at: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none font-mono"
+                  />
+                  <span className="text-[10px] text-muted block">
+                    {submissionWindow.opens_at
+                      ? `IST: ${new Date(submissionWindow.opens_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+                      : "Open immediately when event starts"}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-subtle uppercase block">
+                    Closes At / Deadline:
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={submissionWindow.closes_at}
+                    onChange={(e) => setSubmissionWindow({ ...submissionWindow, closes_at: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none font-mono"
+                  />
+                  <span className="text-[10px] text-muted block">
+                    {submissionWindow.closes_at
+                      ? `IST: ${new Date(submissionWindow.closes_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
+                      : "No deadline set (Submissions stay open)"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-hairline/60 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={savingSettings}
+                    onClick={() => handleSaveSubmissionWindow(new Date(Date.now() - 1000).toISOString())}
+                    className="px-3 py-1.5 text-xs font-bold text-amber border border-amber/50 bg-amber/10 hover:bg-amber/20 transition-colors disabled:opacity-50"
+                  >
+                    🔒 Lock Now
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={savingSettings}
+                    onClick={() => handleSaveSubmissionWindow(null, null)}
+                    className="px-3 py-1.5 text-xs font-bold text-emerald-400 border border-emerald-500/50 bg-emerald-950/30 hover:bg-emerald-900/40 transition-colors disabled:opacity-50"
+                  >
+                    ⚡ Unlock / Open
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={savingSettings}
+                    onClick={() => {
+                      const baseTime = submissionWindow.closes_at ? new Date(submissionWindow.closes_at).getTime() : Date.now();
+                      const extended = new Date(Math.max(baseTime, Date.now()) + 60 * 60 * 1000).toISOString();
+                      handleSaveSubmissionWindow(extended);
+                    }}
+                    className="px-3 py-1.5 text-xs font-bold text-cyan border border-cyan/50 bg-cyan/10 hover:bg-cyan/20 transition-colors disabled:opacity-50"
+                  >
+                    +1 Hour Extension
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={savingSettings}
+                  onClick={() => handleSaveSubmissionWindow()}
+                  className="px-4 py-1.5 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50"
+                >
+                  {savingSettings ? "Saving Settings..." : "Save Custom Window"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -529,8 +686,19 @@ export default function AdminDashboardPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2 text-xs w-full sm:w-auto justify-end">
-                <span className="text-muted">Filter:</span>
+              <div className="flex flex-wrap items-center gap-2 text-xs w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  disabled={sendingAllEmails || teams.length === 0}
+                  onClick={handleSendEmailToAllTeams}
+                  className="px-3 py-1 text-xs font-bold text-cyan border border-cyan/50 bg-cyan/10 hover:bg-cyan/20 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                  title="Broadcast registration details and confirmation email to all registered teams"
+                >
+                  <span>✉</span>
+                  <span>{sendingAllEmails ? "Broadcasting..." : `Send Email to All (${teams.length})`}</span>
+                </button>
+
+                <span className="text-muted ml-1">Filter:</span>
                 {["all", "confirmed", "unconfirmed"].map((f) => (
                   <button
                     key={f}
@@ -682,13 +850,36 @@ export default function AdminDashboardPage() {
                         </td>
 
                         <td className="p-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteTeam(team.id, team.team_name)}
-                            className="px-2 py-1 text-[10px] text-rose-400 border border-rose-500/30 hover:bg-rose-950/40 transition-colors"
-                          >
-                            Delete
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              disabled={sendingEmailTeamId === team.id}
+                              onClick={() => handleSendEmailToTeam(team.id, team.leader_email, team.team_name)}
+                              className={`px-2 py-1 text-[10px] font-mono border transition-colors flex items-center gap-1 ${
+                                team.email_sent
+                                  ? "border-cyan/50 bg-cyan/10 text-cyan hover:bg-cyan/20"
+                                  : "border-hairline bg-base text-subtle hover:border-cyan/50 hover:text-cyan"
+                              }`}
+                              title={team.email_sent ? "Email sent. Click to resend registration details." : "Send registration details email"}
+                            >
+                              {sendingEmailTeamId === team.id ? (
+                                "Sending..."
+                              ) : (
+                                <>
+                                  <span>✉</span>
+                                  <span>{team.email_sent ? "Resend" : "Send Email"}</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTeam(team.id, team.team_name)}
+                              className="px-2 py-1 text-[10px] text-rose-400 border border-rose-500/30 hover:bg-rose-950/40 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1278,7 +1469,30 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
 
-              <div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={sendingEmailTeamId === selectedTeamForDetails.id}
+                  onClick={() =>
+                    handleSendEmailToTeam(
+                      selectedTeamForDetails.id,
+                      selectedTeamForDetails.leader_email,
+                      selectedTeamForDetails.team_name
+                    )
+                  }
+                  className="px-3 py-1 border border-cyan/50 bg-cyan/10 hover:bg-cyan/20 text-cyan text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                  title="Send or resend registration confirmation and details email to team leader"
+                >
+                  <span>✉</span>
+                  <span>
+                    {sendingEmailTeamId === selectedTeamForDetails.id
+                      ? "Sending..."
+                      : selectedTeamForDetails.email_sent
+                      ? "Resend Email"
+                      : "Send Registration Email"}
+                  </span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() =>

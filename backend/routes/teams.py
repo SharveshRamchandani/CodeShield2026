@@ -3,7 +3,7 @@ import string
 import logging
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from psycopg2.extras import RealDictCursor
 import psycopg2
 
@@ -15,7 +15,7 @@ from models.schemas import (
 )
 from database import get_db
 from utils.auth import require_role, get_current_user
-from utils.email import send_confirmation_email
+from utils.mailer import send_team_confirmation_email_task
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +43,19 @@ def generate_unique_team_code(cur) -> str:
 )
 def register_team(
     team_data: TeamCreate,
+    background_tasks: BackgroundTasks,
     db=Depends(get_db),
 ):
     """
     Registers a new team for CodeShield 2026.
     Generates a unique team_code, creates the team in an unconfirmed state,
-    creates a confirmation_token, and sends a confirmation email.
+    creates a confirmation_token, and sends a confirmation email in the background.
     """
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # Acquire transaction-level advisory lock to strictly serialize concurrent registrations
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('team_registration_lock'));")
+
             # Check for existing team with same leader email or team name
             cur.execute(
                 "SELECT id FROM teams WHERE LOWER(leader_email) = LOWER(%s);",
@@ -170,7 +174,6 @@ def register_team(
                     )
 
             team_code = generate_unique_team_code(cur)
-            confirmation_token = secrets.token_urlsafe(32)
 
             insert_query = """
                 INSERT INTO teams (
@@ -182,7 +185,7 @@ def register_team(
                     member4_name, member4_college_id, member4_email,
                     problem_statement_id,
                     attendance_day1, attendance_day2,
-                    confirmed, confirmation_token
+                    confirmed
                 ) VALUES (
                     %s, %s, %s,
                     %s, %s, %s, %s,
@@ -192,7 +195,7 @@ def register_team(
                     %s, %s, %s,
                     %s,
                     FALSE, FALSE,
-                    FALSE, %s
+                    TRUE
                 ) RETURNING id, team_code, leader_email, confirmed;
             """
             cur.execute(
@@ -217,22 +220,33 @@ def register_team(
                     team_data.member4_college_id.strip() if team_data.member4_college_id else None,
                     team_data.member4_email.strip().lower() if team_data.member4_email else None,
                     str(team_data.problem_statement_id) if team_data.problem_statement_id else None,
-                    confirmation_token,
                 ),
             )
             created = cur.fetchone()
             db.commit()
 
-            # Send email
-            send_confirmation_email(
-                to_email=team_data.leader_email.strip(),
-                team_name=team_data.team_name.strip(),
+            # Prepare member summary for confirmation email
+            members = [f"{team_data.leader_name.strip()} (Leader)"]
+            if team_data.member2_name:
+                members.append(f"{team_data.member2_name.strip()} ({team_data.member2_college_id or 'Member 2'})")
+            if team_data.member3_name:
+                members.append(f"{team_data.member3_name.strip()} ({team_data.member3_college_id or 'Member 3'})")
+            if team_data.member4_name:
+                members.append(f"{team_data.member4_name.strip()} ({team_data.member4_college_id or 'Member 4'})")
+
+            # Send registration details email via FastAPI BackgroundTask to leader only
+            background_tasks.add_task(
+                send_team_confirmation_email_task,
+                team_id=str(created["id"]),
+                leader_email=team_data.leader_email.strip().lower(),
                 leader_name=team_data.leader_name.strip(),
-                confirmation_token=confirmation_token,
+                team_name=team_data.team_name.strip(),
+                team_code=created["team_code"],
+                members=members,
             )
 
             return TeamRegistrationResponse(
-                message="Registration initiated! Please check your email to confirm your team.",
+                message="Team registered and confirmed successfully! Check your email for details.",
                 team_code=created["team_code"],
                 leader_email=created["leader_email"],
                 confirmed=created["confirmed"],
@@ -246,67 +260,6 @@ def register_team(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to register team in database",
-        )
-
-
-@router.get(
-    "/confirm/{token}",
-    response_model=TeamConfirmationResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Confirm team registration via email token (Public)",
-)
-def confirm_team(
-    token: str,
-    db=Depends(get_db),
-):
-    """
-    Confirms a registered team using the secret token sent to the team leader's email.
-    Marks confirmed=True and clears the confirmation token.
-    """
-    try:
-        with db.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                "SELECT id, team_name, team_code, confirmed FROM teams WHERE confirmation_token = %s;",
-                (token.strip(),),
-            )
-            team = cur.fetchone()
-
-            if not team:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Invalid or expired confirmation token.",
-                )
-
-            if team["confirmed"]:
-                return TeamConfirmationResponse(
-                    success=True,
-                    message="Team registration is already confirmed!",
-                    team_code=team["team_code"],
-                    team_name=team["team_name"],
-                )
-
-            cur.execute(
-                "UPDATE teams SET confirmed = TRUE, confirmation_token = NULL WHERE id = %s RETURNING team_name, team_code;",
-                (team["id"],),
-            )
-            updated = cur.fetchone()
-            db.commit()
-
-            return TeamConfirmationResponse(
-                success=True,
-                message="Team registration confirmed successfully! Your spot is secured.",
-                team_code=updated["team_code"],
-                team_name=updated["team_name"],
-            )
-    except HTTPException:
-        db.rollback()
-        raise
-    except psycopg2.Error as db_err:
-        db.rollback()
-        logger.error(f"Database error during team confirmation: {db_err}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to confirm team",
         )
 
 

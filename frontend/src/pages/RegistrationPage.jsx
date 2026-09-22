@@ -95,34 +95,34 @@ export default function RegistrationPage() {
   if (successResult) {
     return (
       <div className="w-full min-h-[70vh] flex flex-col items-center justify-center px-6 py-20 bg-base text-content font-mono">
-        <div className="w-full max-w-xl border border-cyan bg-panel/70 p-8 sm:p-10 space-y-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 border border-cyan bg-cyan/10 text-xs text-cyan font-semibold">
-            <span>✓ REGISTRATION INITIATED</span>
+        <div className="w-full max-w-xl border border-emerald-500/50 bg-panel/70 p-8 sm:p-10 space-y-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 border border-emerald-500/60 bg-emerald-950/40 text-xs text-emerald-300 font-semibold">
+            <span>✓ REGISTRATION COMPLETE</span>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-content">
-            Check Your Email Inbox
+            You're All Set!
           </h1>
 
           <p className="text-xs text-muted leading-relaxed">
-            We sent a verification link to{" "}
-            <strong className="text-content font-semibold">{successResult.leader_email}</strong>. Please click the link to confirm your team registration and secure your spot for CodeShield 2026.
+            We sent your team registration details to{" "}
+            <strong className="text-content font-semibold">{successResult.leader_email}</strong>. Your team is officially confirmed and ready for CodeShield 2026.
           </p>
 
           <div className="p-4 border border-hairline bg-base text-xs space-y-1">
-            <div className="text-subtle text-[10px] uppercase">TEMPORARY TEAM CODE:</div>
+            <div className="text-subtle text-[10px] uppercase">OFFICIAL TEAM CODE:</div>
             <div className="text-lg font-bold text-cyan">{successResult.team_code}</div>
             <div className="text-subtle text-[11px]">
-              Status: <span className="text-amber font-semibold">Pending Email Confirmation</span>
+              Status: <span className="text-emerald-400 font-semibold">Confirmed & Active</span>
             </div>
           </div>
 
           <div className="pt-4 border-t border-hairline flex flex-wrap gap-4">
             <Link
-              to="/leader"
+              to="/login"
               className="px-4 py-2 text-xs font-bold text-zinc-950 bg-emerald-400 hover:bg-emerald-300 transition-colors"
             >
-              Go to Leader Dashboard &rarr;
+              Sign In to Participant Dashboard &rarr;
             </Link>
             <Link
               to="/problem-statements"
@@ -154,7 +154,7 @@ export default function RegistrationPage() {
             Register Your Team
           </h1>
           <p className="text-xs text-muted mt-2 leading-relaxed">
-            Teams can have 2 to 4 members. The team leader will receive an email confirmation link to verify the registration.
+            Teams can have 2 to 4 members. The team leader will receive an email with full registration details upon submission.
           </p>
         </div>
 

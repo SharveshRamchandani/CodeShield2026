@@ -165,6 +165,8 @@ class SubmissionOut(SubmissionCreate):
     problem_statement_code: Optional[str] = None
     problem_statement_title: Optional[str] = None
     is_locked: bool = False
+    is_evaluated: bool = False
+    evaluation_count: int = 0
     opens_at: Optional[datetime] = None
     closes_at: Optional[datetime] = None
 

@@ -110,6 +110,14 @@ def get_my_team_submission(
             if not row:
                 return None
             res = dict(row)
+
+            # Check if team has received judge evaluations
+            cur.execute("SELECT COUNT(*) AS count FROM scores WHERE team_id = %s;", (team_id,))
+            score_row = cur.fetchone()
+            eval_count = score_row["count"] if score_row else 0
+            res["is_evaluated"] = eval_count > 0
+            res["evaluation_count"] = eval_count
+
             # Team submission is locked if individual lock is TRUE or window deadline is active
             res["is_locked"] = bool(row.get("is_locked") or window_status["is_locked"]) if not is_admin else False
             res["opens_at"] = window_status["opens_at"]

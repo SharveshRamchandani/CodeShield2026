@@ -248,21 +248,33 @@ export default function LeaderDashboardPage() {
             <div className="text-[11px] text-muted">Presentation pitch attendance</div>
           </div>
 
-          {/* Card 4: Submission State */}
+          {/* Card 4: Evaluation Status */}
           <div className="p-4 border border-hairline bg-panel/60 space-y-1">
-            <div className="text-[10px] text-subtle uppercase">PROJECT DELIVERABLES</div>
+            <div className="text-[10px] text-subtle uppercase">EVALUATION STATUS</div>
             <div className="flex items-center gap-2">
               <span
-                className={`w-2 h-2 rounded-full ${submission ? "bg-emerald-400" : "bg-amber"}`}
+                className={`w-2 h-2 rounded-full ${
+                  submission?.is_evaluated
+                    ? "bg-emerald-400"
+                    : submission
+                    ? "bg-amber animate-pulse"
+                    : "bg-zinc-600"
+                }`}
               />
               <span className="text-sm font-bold text-content">
-                {submission ? "SUBMITTED & ACTIVE" : "PENDING SUBMISSION"}
+                {submission?.is_evaluated
+                  ? "EVALUATION COMPLETE"
+                  : submission
+                  ? "UNDER EVALUATION"
+                  : "AWAITING SUBMISSION"}
               </span>
             </div>
             <div className="text-[11px] text-muted">
-              {submission?.submitted_at
-                ? `Updated: ${new Date(submission.submitted_at).toLocaleTimeString()}`
-                : "Submit before judging deadline"}
+              {submission?.is_evaluated
+                ? "Scored by panel judges"
+                : submission
+                ? "Queued for judge review"
+                : "Submit deliverables to begin"}
             </div>
           </div>
         </div>
@@ -446,6 +458,21 @@ export default function LeaderDashboardPage() {
                         >
                           <span>▣</span> Presentation Deck &rarr;
                         </a>
+                      )}
+                    </div>
+
+                    {/* Evaluation Status Banner */}
+                    <div className="pt-1">
+                      {submission.is_evaluated ? (
+                        <div className="flex items-center gap-2 text-emerald-300 bg-emerald-950/30 border border-emerald-500/30 px-2.5 py-1.5 text-[11px]">
+                          <span>✓</span>
+                          <span><strong>Status:</strong> Evaluated by panel judges</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-amber bg-amber/10 border border-amber/30 px-2.5 py-1.5 text-[11px]">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber animate-pulse" />
+                          <span><strong>Status:</strong> Queued for judge evaluation</span>
+                        </div>
                       )}
                     </div>
                   </div>

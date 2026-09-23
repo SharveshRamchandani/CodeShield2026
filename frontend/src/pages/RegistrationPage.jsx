@@ -1,21 +1,50 @@
-import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { getProblemStatements } from "../api/problemStatements";
+import { useAuth } from "../context/AuthContext";
 
 export default function RegistrationPage() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+
   const [problemStatements, setProblemStatements] = useState([]);
   const [loadingPS, setLoadingPS] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [successResult, setSuccessResult] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const pendingReg = useMemo(() => {
+    if (location.state?.prefillEmail) {
+      return {
+        email: location.state.prefillEmail,
+        name: location.state.prefillName || "",
+      };
+    }
+    try {
+      const stored = sessionStorage.getItem("codeshield_pending_reg");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.email) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    if (user?.email && !user?.team_code) {
+      return {
+        email: user.email,
+        name: user.name || "",
+      };
+    }
+    return null;
+  }, [location.state, user]);
+
   const [formData, setFormData] = useState(() => ({
     team_name: "",
     team_size: 2,
-    leader_name: location.state?.prefillName || "",
-    leader_email: location.state?.prefillEmail || "",
+    leader_name: pendingReg?.name || location.state?.prefillName || "",
+    leader_email: pendingReg?.email || location.state?.prefillEmail || "",
     leader_phone: "",
     leader_college_id: "",
     leader_department: "",
@@ -31,6 +60,36 @@ export default function RegistrationPage() {
     member4_email: "",
     problem_statement_id: "",
   }));
+
+  // Synchronize leader info when pendingReg updates
+  useEffect(() => {
+    if (pendingReg?.email) {
+      setFormData((prev) => ({
+        ...prev,
+        leader_email: pendingReg.email,
+        leader_name: prev.leader_name || pendingReg.name || "",
+      }));
+    }
+  }, [pendingReg]);
+
+  // Auth and Team Guard checks
+  useEffect(() => {
+    if (authLoading) return;
+
+    // 1. If user is already authenticated and has a team, redirect to dashboard
+    if (isAuthenticated && user?.team_code) {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
+
+    // 2. If unauthenticated and no verified Google session, redirect to login
+    if (!pendingReg?.email && (!isAuthenticated || user?.team_code)) {
+      navigate("/login", {
+        replace: true,
+        state: { from: { pathname: "/register" } },
+      });
+    }
+  }, [isAuthenticated, user, authLoading, pendingReg, navigate]);
 
   useEffect(() => {
     async function loadPS() {
@@ -84,6 +143,11 @@ export default function RegistrationPage() {
       };
 
       const res = await apiClient.post("/api/register", payload);
+      try {
+        sessionStorage.removeItem("codeshield_pending_reg");
+      } catch {
+        // ignore
+      }
       setSuccessResult(res);
     } catch (err) {
       setErrorMessage(err.message || "Failed to register team. Please try again.");
@@ -91,6 +155,14 @@ export default function RegistrationPage() {
       setSubmitting(false);
     }
   };
+
+  if (authLoading || (isAuthenticated && user?.team_code) || (!pendingReg?.email && !isAuthenticated)) {
+    return (
+      <div className="w-full min-h-[60vh] flex flex-col items-center justify-center font-mono text-content">
+        <div className="text-xs text-cyan animate-pulse">// VERIFYING AUTHORIZATION...</div>
+      </div>
+    );
+  }
 
   if (successResult) {
     return (
@@ -156,6 +228,11 @@ export default function RegistrationPage() {
           <p className="text-xs text-muted mt-2 leading-relaxed">
             Teams can have 2 to 4 members. The team leader will receive an email with full registration details upon submission.
           </p>
+          {formData.leader_email && (
+            <div className="mt-3 inline-flex items-center gap-2 px-2.5 py-1 border border-cyan/30 bg-cyan/10 text-[11px] text-cyan">
+              <span>●</span> Authenticated as: <strong>{formData.leader_email}</strong>
+            </div>
+          )}
         </div>
 
         {errorMessage && (
@@ -257,18 +334,23 @@ export default function RegistrationPage() {
               </div>
 
               <div className="space-y-1">
-                <label htmlFor="leader_email" className="text-xs text-subtle font-semibold block uppercase">
-                  Email Address * (Confirmation Sent Here)
-                </label>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="leader_email" className="text-xs text-subtle font-semibold block uppercase">
+                    Leader Email Address *
+                  </label>
+                  <span className="text-[10px] text-emerald-400 font-mono">
+                    ✓ Verified Google Account
+                  </span>
+                </div>
                 <input
                   id="leader_email"
                   type="email"
                   name="leader_email"
                   value={formData.leader_email}
-                  onChange={handleChange}
+                  readOnly
                   required
-                  placeholder="leader@college.edu"
-                  className="w-full px-3.5 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none focus:ring-1 focus:ring-cyan"
+                  placeholder="leader@bitsathy.ac.in"
+                  className="w-full px-3.5 py-2 text-xs bg-panel text-cyan border border-cyan/40 focus:outline-none cursor-not-allowed font-semibold"
                 />
               </div>
 

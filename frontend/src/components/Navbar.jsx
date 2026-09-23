@@ -18,7 +18,7 @@ export default function Navbar() {
   const navLinks = [
     { label: "Problem Statements", path: "/problem-statements" },
     { label: "Schedule", path: "/schedule" },
-    { label: "Register", path: "/register", highlight: true },
+    ...(!isAuthenticated ? [{ label: "Register", path: "/login", highlight: true }] : []),
   ];
 
   return (

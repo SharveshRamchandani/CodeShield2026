@@ -60,11 +60,20 @@ export default function LoginPage() {
         });
 
         if (res.needs_registration) {
+          try {
+            sessionStorage.setItem(
+              "codeshield_pending_reg",
+              JSON.stringify({ email: res.email, name: res.name })
+            );
+          } catch {
+            // Ignore storage errors
+          }
           navigate("/register", {
             state: {
               prefillEmail: res.email,
               prefillName: res.name,
             },
+            replace: true,
           });
           return;
         }

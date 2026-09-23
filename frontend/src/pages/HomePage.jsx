@@ -43,7 +43,7 @@ export default function HomePage() {
 
           <div className="mt-12 lg:mt-16 flex flex-wrap items-center gap-4">
             <Link
-              to="/register"
+              to="/login"
               className="px-6 py-3.5 text-xs sm:text-sm font-mono font-bold uppercase tracking-wider text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan focus-visible:ring-offset-2"
             >
               Register

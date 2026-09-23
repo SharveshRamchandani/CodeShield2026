@@ -87,6 +87,36 @@
   will-change: opacity, transform;
 }
 
+@keyframes scanline {
+  0% {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.7;
+  }
+  85% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(800px);
+    opacity: 0;
+  }
+}
+
+.cyber-scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-cyan), transparent);
+  box-shadow: 0 0 14px var(--color-cyan);
+  animation: scanline 5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  pointer-events: none;
+  z-index: 5;
+}
+
 a, button {
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }

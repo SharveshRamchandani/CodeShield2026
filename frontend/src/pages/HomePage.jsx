@@ -1,8 +1,70 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link } from "react-router-dom";
+
+const SCRAMBLE_CHARS = "01#$*+/<>[_]{}—X!Z?=";
+const MAX_ANIMATION_PLAYS = 2;
+
+function useScrambleText(finalText, duration = 2800, autoStartDelay = 250) {
+  const [text, setText] = useState(() => {
+    // Initial placeholder with random glyphs
+    return finalText.replace(/[^\s]/g, () => SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)]);
+  });
+
+  const scramble = useCallback(() => {
+    let frame = 0;
+    const totalFrames = 60; // 60 smooth progression steps
+    const intervalTime = duration / totalFrames;
+
+    const interval = setInterval(() => {
+      frame++;
+      const progress = frame / totalFrames;
+      // Staggered progressive lock-in
+      const fixedCount = Math.floor(progress * (finalText.length + 1));
+
+      let output = "";
+      for (let i = 0; i < finalText.length; i++) {
+        if (i < fixedCount) {
+          output += finalText[i];
+        } else if (finalText[i] === " ") {
+          output += " ";
+        } else {
+          output += SCRAMBLE_CHARS[Math.floor(Math.random() * SCRAMBLE_CHARS.length)];
+        }
+      }
+      setText(output);
+
+      if (frame >= totalFrames) {
+        clearInterval(interval);
+        setText(finalText);
+      }
+    }, intervalTime);
+  }, [finalText, duration]);
+
+  useEffect(() => {
+    const timer = setTimeout(scramble, autoStartDelay);
+    return () => clearTimeout(timer);
+  }, [scramble, autoStartDelay]);
+
+  return [text, scramble];
+}
 
 export default function HomePage() {
   const targetDate = new Date("2026-10-24T09:00:00Z").getTime();
+
+  // Deliberate, smooth cinematic decryption pacing
+  const [titleText, triggerTitleScramble] = useScrambleText("CodeShield", 2800, 200);
+  const [yearText, triggerYearScramble] = useScrambleText("2026", 2200, 1100);
+
+  // Track animation executions (capped at MAX_ANIMATION_PLAYS = 2 per page reload)
+  const playCountRef = useRef(1); // 1 counted for initial mount
+  const isAnimatingRef = useRef(true);
+
+  useEffect(() => {
+    const lockTimer = setTimeout(() => {
+      isAnimatingRef.current = false;
+    }, 3400);
+    return () => clearTimeout(lockTimer);
+  }, []);
 
   const calculateTimeLeft = () => {
     const now = new Date().getTime();
@@ -25,28 +87,57 @@ export default function HomePage() {
 
   const pad = (n) => String(n).padStart(2, "0");
 
+  const handleHeroHover = () => {
+    if (playCountRef.current < MAX_ANIMATION_PLAYS && !isAnimatingRef.current) {
+      playCountRef.current += 1;
+      isAnimatingRef.current = true;
+      triggerTitleScramble();
+      triggerYearScramble();
+      setTimeout(() => {
+        isAnimatingRef.current = false;
+      }, 3400);
+    }
+  };
+
   return (
     <div className="w-full flex flex-col bg-base text-content">
       {/* Asymmetric Split-Screen Hero */}
       <section
         id="main-content"
-        className="w-full border-b border-hairline grid grid-cols-1 lg:grid-cols-12 min-h-[calc(100vh-4rem)]"
+        className="w-full border-b border-hairline grid grid-cols-1 lg:grid-cols-12 min-h-[calc(100vh-4rem)] relative"
       >
         {/* Left ~60% Column: Massive Display Type + Tight CTAs */}
-        <div className="lg:col-span-7 xl:col-span-8 px-6 sm:px-10 lg:px-12 py-16 lg:py-24 flex flex-col justify-between overflow-hidden">
+        <div className="lg:col-span-7 xl:col-span-8 px-6 sm:px-10 lg:px-12 py-16 lg:py-24 flex flex-col justify-between overflow-hidden relative">
           <div className="w-full">
-            <h1 className="text-6xl sm:text-8xl md:text-9xl lg:text-[7.5rem] xl:text-[9.5rem] 2xl:text-[11rem] font-extrabold tracking-tighter leading-[0.84] text-content select-none -ml-1 sm:-ml-2 break-words">
-              CodeShield<br />
-              <span className="text-cyan">2026</span>
+            {/* Live System Status Pill */}
+            <div className="flex items-center gap-2 mb-6 text-xs font-mono text-muted select-none">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan" />
+              </span>
+              <span className="text-cyan font-bold tracking-wider">[ONLINE // 24H HYBRID PROTOCOL]</span>
+            </div>
+
+            <h1
+              onMouseEnter={handleHeroHover}
+              className="text-6xl sm:text-8xl md:text-9xl lg:text-[7.5rem] xl:text-[9.5rem] 2xl:text-[11rem] font-extrabold tracking-tighter leading-[0.84] text-content select-none -ml-1 sm:-ml-2 break-words group"
+            >
+              <span className="inline-block transition-transform duration-200 group-hover:scale-[1.01]">
+                {titleText}
+              </span>
+              <br />
+              <span className="text-cyan inline-block transition-all duration-200 group-hover:drop-shadow-[0_0_20px_rgba(8,145,168,0.4)]">
+                {yearText}
+              </span>
             </h1>
           </div>
 
           <div className="mt-12 lg:mt-16 flex flex-wrap items-center gap-4">
             <Link
               to="/login"
-              className="px-6 py-3.5 text-xs sm:text-sm font-mono font-bold uppercase tracking-wider text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan focus-visible:ring-offset-2"
+              className="px-6 py-3.5 text-xs sm:text-sm font-mono font-bold uppercase tracking-wider text-zinc-950 bg-cyan hover:bg-cyan-hover transition-all hover:shadow-[0_0_18px_rgba(8,145,168,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan focus-visible:ring-offset-2"
             >
-              Register
+              Register &rarr;
             </Link>
 
             <Link
@@ -69,6 +160,9 @@ export default function HomePage() {
             backgroundSize: "28px 28px",
           }}
         >
+          {/* Cyber Scanline Laser Effect */}
+          <div className="cyber-scanline" />
+
           <div className="space-y-8 relative z-10">
             {/* Inline Live Countdown */}
             <div className="pb-6 border-b border-hairline">

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider } from "./context/AuthContext";
 import Navbar from "./components/Navbar";
@@ -20,9 +20,20 @@ import TeamDashboardPage from "./pages/TeamDashboardPage";
 import LeaderDashboardPage from "./pages/LeaderDashboardPage";
 import MemberDashboardPage from "./pages/MemberDashboardPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
+import FAQPage from "./pages/FAQPage";
 import StubPage from "./pages/StubPage";
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
+  const location = useLocation();
+
   useEffect(() => {
     wakeBackend();
   }, []);
@@ -30,14 +41,17 @@ export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <ScrollToTop />
         <div className="min-h-screen bg-base text-content flex flex-col justify-between selection:bg-cyan/30 selection:text-content transition-colors">
           <ServerWakeBanner />
           <Navbar />
-          <main className="flex-grow">
-            <Routes>
+          <main className="flex-grow overflow-x-hidden">
+            <div key={location.pathname} className="page-transition min-h-full">
+              <Routes location={location}>
               {/* Public Routes */}
               <Route path="/" element={<HomePage />} />
               <Route path="/problem-statements" element={<ProblemStatementsPage />} />
+              <Route path="/faq" element={<FAQPage />} />
               <Route path="/register" element={<RegistrationPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/coming-soon" element={<ComingSoonPage />} />
@@ -113,7 +127,8 @@ export default function App() {
                   />
                 }
               />
-            </Routes>
+              </Routes>
+            </div>
           </main>
           <ChatWidget />
           <Footer />

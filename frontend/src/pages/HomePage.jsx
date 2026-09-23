@@ -130,10 +130,19 @@ export default function HomePage() {
           </div>
           <div className="md:col-span-8 space-y-6">
             <p className="text-xl sm:text-2xl text-content font-normal leading-relaxed">
-              CodeShield 2026 is an inter-collegiate cybersecurity and technological innovation hackathon organized by Cyber Club BIT. Built for student security researchers, software architects, and systems builders, teams compete across high-impact tracks to harden systems and deploy emerging tech prototypes.
+              CodeShield 2026 is an internal collegiate cybersecurity and technological innovation hackathon organized by Cyber Club BIT, exclusively for students of Bannari Amman Institute of Technology (BIT Sathy). Conducted in a hybrid sprint format, teams collaborate across high-impact tracks to harden systems and deploy emerging tech prototypes.
             </p>
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              <Link
+                to="/faq"
+                className="text-xs font-mono text-cyan hover:underline flex items-center gap-1.5"
+              >
+                <span>Read FAQ &amp; Hackathon Rules</span>
+                <span>&rarr;</span>
+              </Link>
+            </div>
             <p className="text-sm font-mono text-muted">
-              Venue logistics and timeline announcement TBA by Cyber Club BIT.
+              Hybrid sprint timeline and campus presentation schedule TBA by Cyber Club BIT.
             </p>
           </div>
         </div>

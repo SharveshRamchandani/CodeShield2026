@@ -19,6 +19,7 @@ export default function Footer() {
           <div className="flex flex-col gap-2">
             <span className="text-content font-medium">Navigation</span>
             <Link to="/problem-statements" className="hover:text-cyan transition-colors">Problem Statements</Link>
+            <Link to="/faq" className="hover:text-cyan transition-colors">FAQ</Link>
             <Link to="/schedule" className="hover:text-cyan transition-colors">Schedule</Link>
             <Link to="/register" className="hover:text-cyan transition-colors">Registration</Link>
           </div>

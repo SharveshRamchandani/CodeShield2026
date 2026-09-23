@@ -31,7 +31,7 @@ def get_connection():
 def init_db_migrations():
     """
     Runs idempotent database migrations on startup.
-    Ensures email_sent column exists on teams table.
+    Ensures email_sent column exists on teams table and is_locked on submissions table.
     """
     if not DATABASE_URL:
         return
@@ -39,9 +39,10 @@ def init_db_migrations():
         conn = get_connection()
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS email_sent BOOLEAN DEFAULT FALSE;")
+            cur.execute("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE;")
             conn.commit()
         conn.close()
-        logger.info("Database schema migration verified successfully (email_sent column).")
+        logger.info("Database schema migration verified successfully (email_sent & is_locked columns).")
     except Exception as err:
         logger.warning(f"Database schema migration check skipped or failed: {err}")
 

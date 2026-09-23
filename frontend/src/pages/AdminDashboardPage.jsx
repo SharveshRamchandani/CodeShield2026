@@ -40,6 +40,7 @@ export default function AdminDashboardPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [sendingEmailTeamId, setSendingEmailTeamId] = useState(null);
   const [sendingAllEmails, setSendingAllEmails] = useState(false);
+  const [lockingSubId, setLockingSubId] = useState(null);
 
   // Auto-dismiss alert messages after 5 seconds
   useEffect(() => {
@@ -386,6 +387,32 @@ export default function AdminDashboardPage() {
       });
     } finally {
       setSendingAllEmails(false);
+    }
+  };
+
+  // Toggle Submission Lock for a Team
+  const handleToggleSubmissionLock = async (submissionId, currentLockStatus, teamName) => {
+    setLockingSubId(submissionId);
+    try {
+      const updated = await apiClient.patch(`/api/admin/submissions/${submissionId}/lock`, {
+        is_locked: !currentLockStatus,
+      });
+
+      setSubmissions((prev) =>
+        prev.map((s) => (s.id === submissionId ? { ...s, is_locked: updated.is_locked } : s))
+      );
+
+      setActionStatus({
+        type: "success",
+        text: `Deliverables for team '${teamName || updated.team_name}' are now ${updated.is_locked ? "LOCKED" : "UNLOCKED / REOPENED"}.`,
+      });
+    } catch (err) {
+      setActionStatus({
+        type: "error",
+        text: err?.message || "Failed to update submission lock status.",
+      });
+    } finally {
+      setLockingSubId(null);
     }
   };
 
@@ -1059,67 +1086,105 @@ export default function AdminDashboardPage() {
                 <thead>
                   <tr className="border-b border-hairline bg-base/60 text-muted uppercase text-[10px]">
                     <th className="p-3">Team</th>
-                    <th className="p-3">Project Title & Description</th>
+                    <th className="p-3">Project Title &amp; Description</th>
                     <th className="p-3">GitHub Repository</th>
                     <th className="p-3">Slide Deck / Demo</th>
-                    <th className="p-3 text-right">Submitted At</th>
+                    <th className="p-3 text-center">Lock Status</th>
+                    <th className="p-3">Submitted At</th>
+                    <th className="p-3 text-right">Admin Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-hairline/60">
                   {submissions.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-muted">
+                      <td colSpan={7} className="p-8 text-center text-muted">
                         No team deliverables submitted yet.
                       </td>
                     </tr>
                   ) : (
-                    submissions.map((sub) => (
-                      <tr key={sub.id} className="hover:bg-base/40 transition-colors">
-                        <td className="p-3">
-                          <div className="font-bold text-cyan">{sub.team_code}</div>
-                          <div className="text-content">{sub.team_name}</div>
-                        </td>
+                    submissions.map((sub) => {
+                      const isLocking = lockingSubId === sub.id;
+                      return (
+                        <tr key={sub.id} className="hover:bg-base/40 transition-colors">
+                          <td className="p-3">
+                            <div className="font-bold text-cyan">{sub.team_code}</div>
+                            <div className="text-content">{sub.team_name}</div>
+                          </td>
 
-                        <td className="p-3 max-w-sm">
-                          <div className="font-bold text-content">{sub.idea_title}</div>
-                          <div className="text-[11px] text-muted line-clamp-2 mt-0.5">{sub.idea_description}</div>
-                        </td>
+                          <td className="p-3 max-w-sm">
+                            <div className="font-bold text-content">{sub.idea_title}</div>
+                            <div className="text-[11px] text-muted line-clamp-2 mt-0.5">{sub.idea_description}</div>
+                          </td>
 
-                        <td className="p-3">
-                          {sub.repo_url ? (
-                            <a
-                              href={sub.repo_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-cyan hover:underline inline-flex items-center gap-1 font-mono"
+                          <td className="p-3">
+                            {sub.repo_url ? (
+                              <a
+                                href={sub.repo_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-cyan hover:underline inline-flex items-center gap-1 font-mono"
+                              >
+                                <span>&lt;/&gt;</span> Open Repo &rarr;
+                              </a>
+                            ) : (
+                              <span className="text-muted text-[10px]">Not provided</span>
+                            )}
+                          </td>
+
+                          <td className="p-3">
+                            {sub.deck_file_url ? (
+                              <a
+                                href={sub.deck_file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-amber hover:underline inline-flex items-center gap-1 font-mono"
+                              >
+                                <span>▣</span> View Deck &rarr;
+                              </a>
+                            ) : (
+                              <span className="text-muted text-[10px]">Not provided</span>
+                            )}
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <span
+                              className={`px-2 py-0.5 text-[10px] font-bold border inline-block ${
+                                sub.is_locked
+                                  ? "border-rose-500/50 text-rose-400 bg-rose-950/20"
+                                  : "border-emerald-500/50 text-emerald-400 bg-emerald-950/20"
+                              }`}
                             >
-                              <span>&lt;/&gt;</span> Open Repo &rarr;
-                            </a>
-                          ) : (
-                            <span className="text-muted text-[10px]">Not provided</span>
-                          )}
-                        </td>
+                              {sub.is_locked ? "🔒 LOCKED" : "🔓 OPEN"}
+                            </span>
+                          </td>
 
-                        <td className="p-3">
-                          {sub.deck_file_url ? (
-                            <a
-                              href={sub.deck_file_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-amber hover:underline inline-flex items-center gap-1 font-mono"
+                          <td className="p-3 text-muted font-mono text-[10px]">
+                            {sub.submitted_at ? new Date(sub.submitted_at).toLocaleString() : "-"}
+                          </td>
+
+                          <td className="p-3 text-right">
+                            <button
+                              type="button"
+                              disabled={isLocking}
+                              onClick={() => handleToggleSubmissionLock(sub.id, sub.is_locked, sub.team_name)}
+                              className={`px-3 py-1 text-xs font-bold transition-colors disabled:opacity-50 ${
+                                sub.is_locked
+                                  ? "text-emerald-400 border border-emerald-500/60 hover:bg-emerald-950/30"
+                                  : "text-rose-400 border border-rose-500/60 hover:bg-rose-950/30"
+                              }`}
                             >
-                              <span>▣</span> View Deck &rarr;
-                            </a>
-                          ) : (
-                            <span className="text-muted text-[10px]">Not provided</span>
-                          )}
-                        </td>
-
-                        <td className="p-3 text-right text-muted font-mono text-[10px]">
-                          {sub.submitted_at ? new Date(sub.submitted_at).toLocaleString() : "-"}
-                        </td>
-                      </tr>
-                    ))
+                              {isLocking ? (
+                                "Updating..."
+                              ) : sub.is_locked ? (
+                                "🔓 Unlock / Re-open"
+                              ) : (
+                                "🔒 Lock Submission"
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>

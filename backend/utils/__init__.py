@@ -11,6 +11,8 @@ from .mailer import (
     send_email,
     send_team_confirmation_email_task,
     build_team_confirmation_content,
+    send_submission_confirmation_email_task,
+    build_submission_confirmation_content,
     get_gmail_access_token,
     clear_token_cache,
 )
@@ -26,6 +28,8 @@ __all__ = [
     "send_email",
     "send_team_confirmation_email_task",
     "build_team_confirmation_content",
+    "send_submission_confirmation_email_task",
+    "build_submission_confirmation_content",
     "get_gmail_access_token",
     "clear_token_cache",
 ]

@@ -20,6 +20,7 @@ from models.schemas import (
     SubmissionWindowSettings,
     SubmissionCreate,
     SubmissionOut,
+    SubmissionLockUpdate,
     SystemSettingsOut,
 )
 from database import get_db
@@ -1058,3 +1059,58 @@ def admin_override_team_submission(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update team submission via admin override",
         )
+
+
+@router.patch(
+    "/submissions/{submission_id}/lock",
+    response_model=SubmissionOut,
+    status_code=status.HTTP_200_OK,
+    summary="Admin lock or unlock a team project submission",
+)
+def admin_toggle_submission_lock(
+    submission_id: UUID,
+    lock_data: SubmissionLockUpdate,
+    db=Depends(get_db),
+):
+    """
+    Allows administrators to lock or unlock a specific team's project deliverables.
+    Unlocking enables the team leader to edit and resubmit their project deliverables.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE submissions
+                SET is_locked = %s
+                WHERE id = %s
+                RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at, is_locked;
+                """,
+                (lock_data.is_locked, str(submission_id)),
+            )
+            saved = cur.fetchone()
+            if not saved:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Submission not found.",
+                )
+
+            # Get team info
+            cur.execute("SELECT team_name, team_code FROM teams WHERE id = %s;", (saved["team_id"],))
+            team = cur.fetchone()
+            db.commit()
+
+            res = dict(saved)
+            res["team_name"] = team["team_name"] if team else None
+            res["team_code"] = team["team_code"] if team else None
+            return res
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error toggling submission lock: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update submission lock status",
+        )
+

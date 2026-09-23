@@ -172,6 +172,10 @@ class SubmissionOut(SubmissionCreate):
         from_attributes = True
 
 
+class SubmissionLockUpdate(BaseModel):
+    is_locked: bool
+
+
 class SystemSettingsOut(BaseModel):
     submission_window: SubmissionWindowSettings
 

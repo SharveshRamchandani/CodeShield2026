@@ -1,13 +1,14 @@
 import logging
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from psycopg2.extras import RealDictCursor
 import psycopg2
 
 from models.schemas import SubmissionCreate, SubmissionOut
 from database import get_db
 from utils.auth import require_role, get_current_user
+from utils.mailer import send_submission_confirmation_email_task
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,7 @@ def get_my_team_submission(
             query = """
                 SELECT
                     s.id, s.team_id, s.idea_title, s.idea_description,
-                    s.repo_url, s.deck_file_url, s.submitted_at,
+                    s.repo_url, s.deck_file_url, s.submitted_at, s.is_locked,
                     t.team_name, t.team_code,
                     ps.code AS problem_statement_code,
                     ps.title AS problem_statement_title
@@ -109,7 +110,8 @@ def get_my_team_submission(
             if not row:
                 return None
             res = dict(row)
-            res["is_locked"] = window_status["is_locked"]
+            # Team submission is locked if individual lock is TRUE or window deadline is active
+            res["is_locked"] = bool(row.get("is_locked") or window_status["is_locked"]) if not is_admin else False
             res["opens_at"] = window_status["opens_at"]
             res["closes_at"] = window_status["closes_at"]
             return res
@@ -129,12 +131,15 @@ def get_my_team_submission(
 )
 def upsert_my_team_submission(
     submission_data: SubmissionCreate,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(require_role("leader")),
     db=Depends(get_db),
 ):
     """
     Creates or updates project deliverables scoped strictly to the authenticated team leader's team.
     Enforces server-side submission window deadline lock (participants are locked out, admins bypass).
+    Locks the submission permanently after submit, requiring admin intervention to unlock.
+    Sends a confirmation email to the team leader in the background.
     """
     team_id = current_user["id"]
     is_admin = current_user.get("role") == "admin"
@@ -150,7 +155,7 @@ def upsert_my_team_submission(
                 )
 
             # Check team
-            cur.execute("SELECT id, team_name, team_code FROM teams WHERE id = %s;", (team_id,))
+            cur.execute("SELECT id, team_name, team_code, leader_name, leader_email FROM teams WHERE id = %s;", (team_id,))
             team = cur.fetchone()
             if not team:
                 raise HTTPException(
@@ -158,9 +163,15 @@ def upsert_my_team_submission(
                     detail="Team not found.",
                 )
 
-            # Check existing submission
-            cur.execute("SELECT id FROM submissions WHERE team_id = %s;", (team_id,))
+            # Check existing submission and enforce individual submission locking
+            cur.execute("SELECT id, is_locked FROM submissions WHERE team_id = %s;", (team_id,))
             existing = cur.fetchone()
+
+            if existing and existing.get("is_locked") and not is_admin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your project deliverables have already been finalized and locked. Only an administrator can unlock this submission.",
+                )
 
             if existing:
                 cur.execute(
@@ -170,9 +181,10 @@ def upsert_my_team_submission(
                         idea_description = %s,
                         repo_url = %s,
                         deck_file_url = %s,
+                        is_locked = TRUE,
                         submitted_at = NOW()
                     WHERE id = %s
-                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
+                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at, is_locked;
                     """,
                     (
                         submission_data.idea_title.strip(),
@@ -186,9 +198,9 @@ def upsert_my_team_submission(
             else:
                 cur.execute(
                     """
-                    INSERT INTO submissions (team_id, idea_title, idea_description, repo_url, deck_file_url)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at;
+                    INSERT INTO submissions (team_id, idea_title, idea_description, repo_url, deck_file_url, is_locked)
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                    RETURNING id, team_id, idea_title, idea_description, repo_url, deck_file_url, submitted_at, is_locked;
                     """,
                     (
                         team_id,
@@ -201,10 +213,25 @@ def upsert_my_team_submission(
                 saved = cur.fetchone()
 
             db.commit()
+
+            # Trigger submission confirmation email to team leader in background
+            background_tasks.add_task(
+                send_submission_confirmation_email_task,
+                team_id=str(team["id"]),
+                leader_email=team["leader_email"].strip().lower(),
+                leader_name=team["leader_name"].strip(),
+                team_name=team["team_name"].strip(),
+                team_code=team["team_code"],
+                idea_title=submission_data.idea_title.strip(),
+                idea_description=submission_data.idea_description.strip(),
+                repo_url=submission_data.repo_url.strip() if submission_data.repo_url else None,
+                deck_file_url=submission_data.deck_file_url.strip() if submission_data.deck_file_url else None,
+            )
+
             res = dict(saved)
             res["team_name"] = team["team_name"]
             res["team_code"] = team["team_code"]
-            res["is_locked"] = window_status["is_locked"]
+            res["is_locked"] = True
             res["opens_at"] = window_status["opens_at"]
             res["closes_at"] = window_status["closes_at"]
             return res
@@ -330,7 +357,7 @@ def list_submissions(
             query = """
                 SELECT
                     s.id, s.team_id, s.idea_title, s.idea_description,
-                    s.repo_url, s.deck_file_url, s.submitted_at,
+                    s.repo_url, s.deck_file_url, s.submitted_at, s.is_locked,
                     t.team_name, t.team_code,
                     ps.code AS problem_statement_code,
                     ps.title AS problem_statement_title
@@ -368,7 +395,7 @@ def get_submission_by_team(
             query = """
                 SELECT
                     s.id, s.team_id, s.idea_title, s.idea_description,
-                    s.repo_url, s.deck_file_url, s.submitted_at,
+                    s.repo_url, s.deck_file_url, s.submitted_at, s.is_locked,
                     t.team_name, t.team_code
                 FROM submissions s
                 LEFT JOIN teams t ON s.team_id = t.id

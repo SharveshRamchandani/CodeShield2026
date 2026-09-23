@@ -408,3 +408,107 @@ def send_team_confirmation_email_task(
             logger.error(f"Failed to update email_sent status in database for team {team_id}: {db_err}")
     else:
         logger.error(f"Background email delivery failed for team '{team_name}' ({team_code}) to {leader_email}")
+
+
+def build_submission_confirmation_content(
+    team_name: str,
+    leader_name: str,
+    team_code: str,
+    idea_title: str,
+    idea_description: str,
+    repo_url: Optional[str] = None,
+    deck_file_url: Optional[str] = None,
+) -> Dict[str, str]:
+    """
+    Builds a clean written project deliverables confirmation note.
+    """
+    subject = f"Project Deliverables Submitted - CodeShield 2026 [{team_name}]"
+
+    repo_line = f"Repository URL: {repo_url}" if repo_url else "Repository URL: Not provided"
+    deck_line = f"Slide Deck / Demo URL: {deck_file_url}" if deck_file_url else "Slide Deck / Demo URL: Not provided"
+
+    repo_html = f'<p><strong>Repository:</strong> <a href="{repo_url}">{repo_url}</a></p>' if repo_url else '<p><strong>Repository:</strong> Not provided</p>'
+    deck_html = f'<p><strong>Slide Deck / Demo:</strong> <a href="{deck_file_url}">{deck_file_url}</a></p>' if deck_file_url else '<p><strong>Slide Deck / Demo:</strong> Not provided</p>'
+
+    text_body = f"""Hi {leader_name},
+
+Your project deliverables for CodeShield 2026 have been successfully recorded and locked for evaluation.
+
+Submission Details:
+- Team: {team_name} ({team_code})
+- Project Title: {idea_title}
+- Summary / Abstract: {idea_description}
+- {repo_line}
+- {deck_line}
+- Status: FINALIZED & LOCKED
+
+Note: Your project submission is now finalized and locked so panel judges and evaluators can review your work. If you require any urgent corrections, please contact an event administrator to request reopening.
+
+Best regards,
+Cyber Club, BIT Sathy"""
+
+    html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf8">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #111827; margin: 0; padding: 16px;">
+  <p>Hi {leader_name},</p>
+
+  <p>Your project deliverables for <strong>CodeShield 2026</strong> have been successfully recorded and locked for evaluation.</p>
+
+  <div style="background-color: #f3f4f6; padding: 14px; border-left: 4px solid #06b6d4; margin: 16px 0;">
+    <p style="margin: 0 0 6px 0;"><strong>Team:</strong> {team_name} (<code>{team_code}</code>)</p>
+    <p style="margin: 0 0 6px 0;"><strong>Project Title:</strong> {idea_title}</p>
+    <p style="margin: 0 0 6px 0;"><strong>Abstract:</strong> {idea_description}</p>
+    {repo_html}
+    {deck_html}
+    <p style="margin: 6px 0 0 0; color: #059669; font-weight: bold;">Status: Finalized &amp; Locked</p>
+  </div>
+
+  <p>Your project submission is now locked so evaluators and panel judges can review your submission. If you need any critical corrections, please contact an event administrator to request reopening.</p>
+
+  <p>Best regards,<br>
+  <strong>Cyber Club, BIT Sathy</strong></p>
+</body>
+</html>"""
+
+    return {
+        "subject": subject,
+        "text": text_body,
+        "html": html_body,
+    }
+
+
+def send_submission_confirmation_email_task(
+    team_id: str,
+    leader_email: str,
+    leader_name: str,
+    team_name: str,
+    team_code: str,
+    idea_title: str,
+    idea_description: str,
+    repo_url: Optional[str] = None,
+    deck_file_url: Optional[str] = None,
+):
+    """
+    Background task target for sending submission confirmation email to team leader.
+    """
+    logger.info(f"Starting submission confirmation email delivery for team '{team_name}' ({team_code}) to {leader_email}")
+    content = build_submission_confirmation_content(
+        team_name=team_name,
+        leader_name=leader_name,
+        team_code=team_code,
+        idea_title=idea_title,
+        idea_description=idea_description,
+        repo_url=repo_url,
+        deck_file_url=deck_file_url,
+    )
+
+    send_email(
+        to=leader_email,
+        subject=content["subject"],
+        html=content["html"],
+        text=content["text"],
+    )
+

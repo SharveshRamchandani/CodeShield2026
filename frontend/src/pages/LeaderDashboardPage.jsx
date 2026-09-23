@@ -292,35 +292,25 @@ export default function LeaderDashboardPage() {
         {/* TAB 1: SUBMISSION STUDIO */}
         {activeTab === "submission" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left Col (7): Submission Form */}
-            <div className="lg:col-span-7">
-              <form
-                onSubmit={handleSaveSubmission}
-                className="border border-hairline bg-panel/60 p-6 sm:p-8 space-y-6"
-              >
-                <div className="border-b border-hairline/60 pb-3">
-                  <div className="text-xs font-semibold text-cyan uppercase mb-1">
-                    // SUBMISSION DETAILS & DELIVERABLES
-                  </div>
-                  <p className="text-xs text-muted">
-                    Team leaders can continuously update project deliverables up until the evaluation cutoff.
-                  </p>
-                </div>
+            {/* Left Col (7): Form Editor */}
+            <div className="lg:col-span-7 border border-hairline bg-panel p-6 sm:p-8 space-y-6">
+              <div>
+                <div className="text-xs font-bold text-cyan uppercase">// SUBMISSION DETAILS &amp; DELIVERABLES</div>
+                <p className="text-xs text-muted mt-1 leading-relaxed">
+                  Submit your project details and deliverable links below. Once submitted, project deliverables are locked for panel evaluation.
+                </p>
+              </div>
 
-                {/* Submission Window Lock Banner */}
+              <form onSubmit={handleSaveSubmission} className="space-y-5">
+                {/* Submission Lock Banner */}
                 {submission?.is_locked && (
-                  <div className="p-3.5 border border-amber/50 bg-amber/10 text-amber text-xs font-mono space-y-1">
-                    <div className="font-bold flex items-center gap-1.5">
-                      <span>🔒</span>
-                      <span>SUBMISSIONS LOCKED (READ ONLY)</span>
+                  <div className="p-3.5 border border-cyan/50 bg-cyan/10 text-cyan text-xs font-mono space-y-1.5">
+                    <div className="font-bold flex items-center gap-1.5 text-content">
+                      <span className="text-cyan">🔒</span>
+                      <span>PROJECT DELIVERABLES FINALIZED &amp; LOCKED</span>
                     </div>
-                    <p className="text-[11px] text-content/80 leading-relaxed">
-                      The project submission deadline has passed. Deliverables are locked in read-only mode for judge evaluations.
-                      {submission.closes_at && (
-                        <span className="block text-muted text-[10px] mt-0.5">
-                          Cutoff: {new Date(submission.closes_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
-                        </span>
-                      )}
+                    <p className="text-[11px] text-content/90 leading-relaxed">
+                      Your deliverables have been recorded and locked for judge evaluation. Confirmation email has been sent. To make any corrections or unlock the form, please contact an event administrator.
                     </p>
                   </div>
                 )}
@@ -407,12 +397,12 @@ export default function LeaderDashboardPage() {
                   {saving ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-zinc-950 border-t-transparent animate-spin" />
-                      <span>Saving Deliverables...</span>
+                      <span>Recording Deliverables...</span>
                     </>
                   ) : submission?.is_locked ? (
-                    <span>🔒 Submissions Closed</span>
+                    <span>🔒 SUBMISSION LOCKED (CONTACT ADMIN TO EDIT)</span>
                   ) : (
-                    <span>{submission ? "✓ Update Project Deliverables" : "⚡ Submit Deliverables &rarr;"}</span>
+                    <span>⚡ Submit &amp; Finalize Deliverables &rarr;</span>
                   )}
                 </button>
               </form>

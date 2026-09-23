@@ -157,6 +157,8 @@ export const apiClient = {
   get: (endpoint, options = {}) => apiFetch(endpoint, { ...options, method: "GET" }),
   post: (endpoint, body, options = {}) =>
     apiFetch(endpoint, { ...options, method: "POST", body }),
+  put: (endpoint, body, options = {}) =>
+    apiFetch(endpoint, { ...options, method: "PUT", body }),
   patch: (endpoint, body, options = {}) =>
     apiFetch(endpoint, { ...options, method: "PATCH", body }),
   delete: (endpoint, options = {}) => apiFetch(endpoint, { ...options, method: "DELETE" }),

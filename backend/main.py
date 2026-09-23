@@ -18,6 +18,7 @@ from routes.teams import router as teams_router, register_team
 from routes.submissions import router as submissions_router
 from routes.scores import router as scores_router
 from routes.admin import router as admin_router
+from routes.chat import router as chat_router
 
 app = FastAPI(
     title="CodeShield 2026 API",
@@ -53,6 +54,7 @@ app.include_router(teams_router, prefix="/api/teams")
 app.include_router(submissions_router, prefix="/api/submissions")
 app.include_router(scores_router, prefix="/api/scores")
 app.include_router(admin_router, prefix="/api/admin")
+app.include_router(chat_router, prefix="/api/chat")
 
 # Top-level route aliases for convenience
 app.add_api_route(

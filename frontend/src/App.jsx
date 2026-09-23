@@ -6,6 +6,7 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import ServerWakeBanner from "./components/ServerWakeBanner";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ChatWidget from "./components/ChatWidget";
 import { Analytics } from "@vercel/analytics/react";
 import { wakeBackend } from "./api/client";
 
@@ -114,6 +115,7 @@ export default function App() {
               />
             </Routes>
           </main>
+          <ChatWidget />
           <Footer />
           <Analytics />
         </div>

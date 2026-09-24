@@ -12,13 +12,33 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   // Active navigation tab
-  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'teams' | 'users' | 'submissions' | 'scores' | 'exports'
+  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'teams' | 'problem_statements' | 'users' | 'submissions' | 'scores' | 'exports'
   
   // Team Filters & Modal State
   const [teamFilter, setTeamFilter] = useState("all"); // 'all' | 'confirmed' | 'unconfirmed'
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTeamForDetails, setSelectedTeamForDetails] = useState(null);
   
+  // Problem Statement Filters & State
+  const [problemStatements, setProblemStatements] = useState([]);
+  const [psSearchQuery, setPsSearchQuery] = useState("");
+  const [psDomainFilter, setPsDomainFilter] = useState(""); // "" means category cards overview first
+  const [psSortBy, setPsSortBy] = useState("code_asc"); // 'code_asc' | 'code_desc' | 'domain_asc' | 'title_asc' | 'teams_desc'
+  const [psPage, setPsPage] = useState(1);
+  const [psPerPage, setPsPerPage] = useState(10);
+  const [isAddPsModalOpen, setIsAddPsModalOpen] = useState(false);
+  const [editingPs, setEditingPs] = useState(null);
+  const [deletingPs, setDeletingPs] = useState(null);
+  const [psForm, setPsForm] = useState({
+    code: "",
+    title: "",
+    description: "",
+    domain: "Cybersecurity",
+    customDomain: "",
+  });
+  const [savingPs, setSavingPs] = useState(false);
+  const [deletingPsLoading, setDeletingPsLoading] = useState(false);
+
   // User Management Filters & Creation State
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [updatingUserId, setUpdatingUserId] = useState(null);
@@ -54,19 +74,21 @@ export default function AdminDashboardPage() {
   const loadAllAdminData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsData, teamsData, subsData, scoresData, usersData, settingsData] = await Promise.all([
+      const [statsData, teamsData, subsData, scoresData, usersData, settingsData, psData] = await Promise.all([
         apiClient.get("/api/admin/stats").catch(() => null),
         apiClient.get("/api/admin/teams").catch(() => []),
         apiClient.get("/api/submissions/").catch(() => []),
         apiClient.get("/api/scores/").catch(() => []),
         apiClient.get("/api/admin/users").catch(() => []),
         apiClient.get("/api/admin/settings").catch(() => null),
+        apiClient.get("/api/admin/problem-statements").catch(() => []),
       ]);
       setStats(statsData);
       setTeams(teamsData || []);
       setSubmissions(subsData || []);
       setScores(scoresData || []);
       setUsersList(usersData || []);
+      setProblemStatements(psData || []);
 
       if (settingsData?.submission_window) {
         setSubmissionWindow({
@@ -155,9 +177,176 @@ export default function AdminDashboardPage() {
     return arr.sort((a, b) => b.total_score - a.total_score);
   }, [scores]);
 
+  // Distinct Domains for Filters & Forms
+  const psDomainsList = useMemo(() => {
+    const list = Array.from(new Set(problemStatements.map((ps) => ps.domain).filter(Boolean)));
+    if (!list.includes("Cybersecurity")) list.unshift("Cybersecurity");
+    if (!list.includes("Innovation & Emerging Technologies")) list.push("Innovation & Emerging Technologies");
+    return list;
+  }, [problemStatements]);
+
+  // Filtered & Sorted Problem Statements List
+  const filteredAndSortedProblemStatements = useMemo(() => {
+    let list = problemStatements.filter((ps) => {
+      if (psDomainFilter && psDomainFilter !== "all" && ps.domain !== psDomainFilter) return false;
+      const q = psSearchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        ps.code?.toLowerCase().includes(q) ||
+        ps.title?.toLowerCase().includes(q) ||
+        ps.description?.toLowerCase().includes(q) ||
+        ps.domain?.toLowerCase().includes(q)
+      );
+    });
+
+    list = [...list].sort((a, b) => {
+      if (psSortBy === "code_asc") {
+        return (a.code || "").localeCompare(b.code || "", undefined, { numeric: true, sensitivity: "base" });
+      }
+      if (psSortBy === "code_desc") {
+        return (b.code || "").localeCompare(a.code || "", undefined, { numeric: true, sensitivity: "base" });
+      }
+      if (psSortBy === "domain_asc") {
+        const domainCmp = (a.domain || "").localeCompare(b.domain || "");
+        if (domainCmp !== 0) return domainCmp;
+        return (a.code || "").localeCompare(b.code || "", undefined, { numeric: true, sensitivity: "base" });
+      }
+      if (psSortBy === "title_asc") {
+        return (a.title || "").localeCompare(b.title || "");
+      }
+      if (psSortBy === "teams_desc") {
+        return (b.team_count || 0) - (a.team_count || 0);
+      }
+      if (psSortBy === "teams_asc") {
+        return (a.team_count || 0) - (b.team_count || 0);
+      }
+      return 0;
+    });
+
+    return list;
+  }, [problemStatements, psDomainFilter, psSearchQuery, psSortBy]);
+
+  // Paginated list
+  const psTotalPages = Math.max(1, Math.ceil(filteredAndSortedProblemStatements.length / (psPerPage || 10)));
+  const paginatedProblemStatements = useMemo(() => {
+    if (psPerPage === 0) return filteredAndSortedProblemStatements;
+    const start = (psPage - 1) * psPerPage;
+    return filteredAndSortedProblemStatements.slice(start, start + psPerPage);
+  }, [filteredAndSortedProblemStatements, psPage, psPerPage]);
+
+  const hasActivePsSelection = Boolean(psDomainFilter || psSearchQuery.trim());
+
   // ==========================================
   // Action Handlers
   // ==========================================
+
+  // Problem Statement Handlers
+  const handleOpenAddPsModal = () => {
+    setPsForm({
+      code: "",
+      title: "",
+      description: "",
+      domain: psDomainFilter && psDomainFilter !== "all" ? psDomainFilter : "Cybersecurity",
+      customDomain: "",
+    });
+    setEditingPs(null);
+    setIsAddPsModalOpen(true);
+  };
+
+  const handleOpenEditPsModal = (ps) => {
+    const isStandardOrKnown = psDomainsList.includes(ps.domain);
+    setPsForm({
+      code: ps.code,
+      title: ps.title,
+      description: ps.description,
+      domain: isStandardOrKnown ? ps.domain : "Custom",
+      customDomain: isStandardOrKnown ? "" : ps.domain,
+    });
+    setEditingPs(ps);
+    setIsAddPsModalOpen(true);
+  };
+
+  const handleSaveProblemStatement = async (e) => {
+    e.preventDefault();
+    let finalDomain = "";
+    if (psForm.domain === "Custom") {
+      finalDomain = psForm.customDomain.trim();
+    } else if (psForm.domain) {
+      finalDomain = psForm.domain.trim();
+    }
+    
+    if (!finalDomain && psForm.customDomain) {
+      finalDomain = psForm.customDomain.trim();
+    }
+
+    if (!psForm.code.trim() || !psForm.title.trim() || !psForm.description.trim() || !finalDomain) {
+      setActionStatus({ type: "error", text: "Please complete Code, Title, Description, and Category Name." });
+      return;
+    }
+
+    setSavingPs(true);
+    const payload = {
+      code: psForm.code.trim().toUpperCase(),
+      title: psForm.title.trim(),
+      description: psForm.description.trim(),
+      domain: finalDomain,
+    };
+
+    try {
+      if (editingPs) {
+        const updated = await apiClient.put(`/api/admin/problem-statements/${editingPs.id}`, payload);
+        setProblemStatements((prev) =>
+          prev.map((item) => (item.id === editingPs.id ? { ...item, ...updated } : item))
+        );
+        setActionStatus({
+          type: "success",
+          text: `Problem statement '${updated.code} - ${updated.title}' updated under track [${updated.domain}].`,
+        });
+      } else {
+        const created = await apiClient.post("/api/admin/problem-statements", payload);
+        setProblemStatements((prev) => [...prev, { ...created, team_count: 0 }]);
+        setActionStatus({
+          type: "success",
+          text: `Problem statement '${created.code} - ${created.title}' added to track [${created.domain}] successfully.`,
+        });
+      }
+      setIsAddPsModalOpen(false);
+      setEditingPs(null);
+      // Auto-filter to the new/updated domain so it's immediately visible
+      setPsDomainFilter(finalDomain);
+      setPsPage(1);
+      apiClient.get("/api/admin/problem-statements").then((data) => data && setProblemStatements(data)).catch(() => {});
+    } catch (err) {
+      setActionStatus({
+        type: "error",
+        text: err?.message || "Failed to save problem statement.",
+      });
+    } finally {
+      setSavingPs(false);
+    }
+  };
+
+  const handleConfirmDeletePs = async () => {
+    if (!deletingPs) return;
+    setDeletingPsLoading(true);
+    try {
+      await apiClient.delete(`/api/admin/problem-statements/${deletingPs.id}`);
+      setProblemStatements((prev) => prev.filter((item) => item.id !== deletingPs.id));
+      setActionStatus({
+        type: "success",
+        text: `Problem statement '${deletingPs.code} - ${deletingPs.title}' removed from database.`,
+      });
+      setDeletingPs(null);
+      apiClient.get("/api/admin/teams").then((data) => data && setTeams(data)).catch(() => {});
+    } catch (err) {
+      setActionStatus({
+        type: "error",
+        text: err?.message || "Failed to delete problem statement.",
+      });
+    } finally {
+      setDeletingPsLoading(false);
+    }
+  };
 
   // Create New Staff User Directly
   const handleCreateUser = async (e) => {
@@ -487,8 +676,10 @@ export default function AdminDashboardPage() {
               disabled={loading}
               className="px-3 py-1.5 text-xs border border-hairline bg-panel hover:bg-panel/80 text-content flex items-center gap-2 transition-colors disabled:opacity-50"
             >
-              <span className={loading ? "animate-spin" : ""}>&circlearrowright;</span>
-              {loading ? "Syncing..." : "Refresh Telemetry"}
+              <svg className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>{loading ? "Syncing..." : "Refresh Telemetry"}</span>
             </button>
           </div>
         </div>
@@ -518,10 +709,11 @@ export default function AdminDashboardPage() {
           {[
             { id: "overview", label: "[01 // OVERVIEW & METRICS]" },
             { id: "teams", label: `[02 // TEAMS & MEMBERS (${teams.length})]` },
-            { id: "users", label: `[03 // USER & ROLE MGMT (${usersList.length})]` },
-            { id: "submissions", label: `[04 // DELIVERABLES (${submissions.length})]` },
-            { id: "scores", label: `[05 // LEADERBOARD (${leaderboard.length})]` },
-            { id: "exports", label: "[06 // EXPORTS & LOAD BALANCER]" },
+            { id: "problem_statements", label: `[03 // PROBLEM STATEMENTS (${problemStatements.length})]` },
+            { id: "users", label: `[04 // USER & ROLE MGMT (${usersList.length})]` },
+            { id: "submissions", label: `[05 // DELIVERABLES (${submissions.length})]` },
+            { id: "scores", label: `[06 // LEADERBOARD (${leaderboard.length})]` },
+            { id: "exports", label: "[07 // EXPORTS & LOAD BALANCER]" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -544,7 +736,7 @@ export default function AdminDashboardPage() {
         {/* TAB 1: OVERVIEW & TELEMETRY */}
         {activeTab === "overview" && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
               <div className="p-4 border border-hairline bg-panel">
                 <div className="text-[10px] text-muted uppercase">// TOTAL TEAMS</div>
                 <div className="text-2xl font-bold text-cyan mt-1">{stats?.total_teams ?? teams.length}</div>
@@ -555,6 +747,12 @@ export default function AdminDashboardPage() {
                 <div className="text-[10px] text-muted uppercase">// CONFIRMED</div>
                 <div className="text-2xl font-bold text-emerald-400 mt-1">{stats?.confirmed_teams ?? 0}</div>
                 <div className="text-[10px] text-subtle mt-1">Verified spots</div>
+              </div>
+
+              <div className="p-4 border border-hairline bg-panel">
+                <div className="text-[10px] text-muted uppercase">// PROBLEM STATEMENTS</div>
+                <div className="text-2xl font-bold text-cyan mt-1">{problemStatements.length}</div>
+                <div className="text-[10px] text-subtle mt-1">Active in DB</div>
               </div>
 
               <div className="p-4 border border-hairline bg-panel">
@@ -917,7 +1115,422 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 3: USER & ROLE MANAGEMENT (INSTANT PROMOTE / DEMOTE & DIRECT USER ADDITION) */}
+        {/* TAB 3: PROBLEM STATEMENTS MANAGEMENT */}
+        {activeTab === "problem_statements" && (
+          <div className="space-y-6">
+            {/* Header banner */}
+            <div className="p-4 border border-cyan/40 bg-cyan/5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold text-cyan uppercase flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan" />
+                  // PROBLEM STATEMENTS CATALOG &amp; DATABASE SYNCHRONIZATION
+                </div>
+                <p className="text-[11px] text-muted mt-0.5">
+                  Select a category track or search to manage problem statements. Real-time updates directly sync with PostgreSQL.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenAddPsModal}
+                  className="px-3.5 py-1.5 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover flex items-center gap-1.5 transition-colors shadow-sm"
+                >
+                  <span className="text-sm leading-none">+</span> Add Problem Statement
+                </button>
+              </div>
+            </div>
+
+            {/* Category Selector Grid & Search Hub */}
+            <div className="space-y-4">
+              {/* Live Search Bar with Quick Action */}
+              <div className="p-4 border border-hairline bg-panel flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="relative flex-1">
+                  <span className="absolute inset-y-0 left-3 flex items-center text-cyan text-sm pointer-events-none font-mono">
+                    🔍
+                  </span>
+                  <input
+                    type="text"
+                    value={psSearchQuery}
+                    onChange={(e) => {
+                      setPsSearchQuery(e.target.value);
+                      setPsPage(1);
+                    }}
+                    placeholder="Search by code (e.g. CS 01), title, or keyword..."
+                    className="w-full pl-9 pr-8 py-2 text-xs bg-base border border-hairline text-content focus:border-cyan focus:outline-none font-mono"
+                  />
+                  {psSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPsSearchQuery("");
+                        setPsPage(1);
+                      }}
+                      className="absolute inset-y-0 right-2.5 flex items-center text-muted hover:text-content text-xs font-mono"
+                    >
+                      &times; Clear
+                    </button>
+                  )}
+                </div>
+
+                {hasActivePsSelection && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPsDomainFilter("");
+                      setPsSearchQuery("");
+                      setPsPage(1);
+                    }}
+                    className="px-3 py-2 text-xs border border-hairline bg-base hover:bg-panel text-muted hover:text-content transition-colors font-mono whitespace-nowrap"
+                  >
+                    Reset &amp; View Categories
+                  </button>
+                )}
+              </div>
+
+              {/* Category Selector Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {psDomainsList.map((domain) => {
+                  const count = problemStatements.filter((p) => p.domain === domain).length;
+                  const totalTeamsInDomain = problemStatements
+                    .filter((p) => p.domain === domain)
+                    .reduce((acc, curr) => acc + (curr.team_count || 0), 0);
+                  const isCyber = domain === "Cybersecurity";
+                  const isTech = domain === "Innovation & Emerging Technologies";
+                  const isSelected = psDomainFilter === domain;
+
+                  return (
+                    <div
+                      key={domain}
+                      onClick={() => {
+                        setPsDomainFilter(isSelected ? "" : domain);
+                        setPsPage(1);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      className={`p-4 border transition-all cursor-pointer text-left flex flex-col justify-between select-none ${
+                        isSelected
+                          ? isCyber
+                            ? "border-cyan bg-cyan/10 ring-1 ring-cyan"
+                            : isTech
+                            ? "border-purple-400 bg-purple-950/40 ring-1 ring-purple-400"
+                            : "border-amber bg-amber/10 ring-1 ring-amber"
+                          : "border-hairline bg-panel hover:border-hairline/80 hover:bg-panel/70"
+                      }`}
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 border ${
+                              isCyber
+                                ? "border-cyan/50 text-cyan bg-cyan/10"
+                                : isTech
+                                ? "border-purple-400/50 text-purple-300 bg-purple-950/40"
+                                : "border-amber/50 text-amber bg-amber/10"
+                            }`}
+                          >
+                            {isCyber ? "🛡️ CYBER TRACK" : isTech ? "⚡ TECH TRACK" : "🔮 CUSTOM TRACK"}
+                          </span>
+                          <span className="text-xs font-mono font-bold text-content">
+                            {count} Statement{count === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-sm text-content mt-1">
+                          {domain === "Innovation & Emerging Technologies" ? "Innovation & Emerging Tech" : domain}
+                        </h3>
+                        <p className="text-[11px] text-muted">
+                          {totalTeamsInDomain} team{totalTeamsInDomain === 1 ? "" : "s"} assigned across this track.
+                        </p>
+                      </div>
+
+                      <div className="pt-3 mt-3 border-t border-hairline/50 flex items-center justify-between text-xs font-mono">
+                        <span className={isSelected ? (isCyber ? "text-cyan font-bold" : isTech ? "text-purple-300 font-bold" : "text-amber font-bold") : "text-subtle"}>
+                          {isSelected ? "● Category Active" : "Click to view track"}
+                        </span>
+                        <span className={isCyber ? "text-cyan" : isTech ? "text-purple-400" : "text-amber"}>
+                          {isSelected ? "[ Hide ]" : "[ Browse → ]"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* View All Card */}
+                <div
+                  onClick={() => {
+                    setPsDomainFilter(psDomainFilter === "all" ? "" : "all");
+                    setPsPage(1);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  className={`p-4 border transition-all cursor-pointer text-left flex flex-col justify-between select-none ${
+                    psDomainFilter === "all"
+                      ? "border-emerald-500 bg-emerald-950/30 ring-1 ring-emerald-500"
+                      : "border-hairline bg-panel hover:border-hairline/80 hover:bg-panel/70"
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold px-2 py-0.5 border border-emerald-500/50 text-emerald-400 bg-emerald-950/30">
+                        🌐 ALL CATEGORIES
+                      </span>
+                      <span className="text-xs font-mono font-bold text-content">
+                        {problemStatements.length} Total
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-sm text-content mt-1">
+                      Complete Catalog Overview
+                    </h3>
+                    <p className="text-[11px] text-muted">
+                      Inspect all challenge statements across every domain simultaneously.
+                    </p>
+                  </div>
+
+                  <div className="pt-3 mt-3 border-t border-hairline/50 flex items-center justify-between text-xs font-mono">
+                    <span className={psDomainFilter === "all" ? "text-emerald-400 font-bold" : "text-subtle"}>
+                      {psDomainFilter === "all" ? "● All Tracks Active" : "Click to view all"}
+                    </span>
+                    <span className="text-emerald-400">{psDomainFilter === "all" ? "[ Hide ]" : "[ View All → ]"}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ONLY SHOW PROBLEM STATEMENTS WHEN A CATEGORY IS CHOSEN OR A SEARCH QUERY IS ENTERED */}
+            {hasActivePsSelection ? (
+              <div className="space-y-4 animate-fadeIn">
+                {/* Secondary Filter & Sort Control Bar */}
+                <div className="p-3 border border-hairline bg-panel flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-muted font-mono uppercase text-[11px]">Active Filter:</span>
+                    {psDomainFilter && (
+                      <span className="px-2 py-0.5 border border-cyan/50 bg-cyan/10 text-cyan text-xs font-mono flex items-center gap-1.5">
+                        <span>Track: {psDomainFilter === "all" ? "All Tracks" : psDomainFilter}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPsDomainFilter("");
+                            setPsPage(1);
+                          }}
+                          className="hover:text-white"
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    )}
+                    {psSearchQuery && (
+                      <span className="px-2 py-0.5 border border-amber/50 bg-amber/10 text-amber text-xs font-mono flex items-center gap-1.5">
+                        <span>Keyword: "{psSearchQuery}"</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPsSearchQuery("");
+                            setPsPage(1);
+                          }}
+                          className="hover:text-white"
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    )}
+                    <span className="text-subtle text-[11px]">
+                      ({filteredAndSortedProblemStatements.length} matched)
+                    </span>
+                  </div>
+
+                  {/* Sorting & Page Size Controls */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted font-mono text-[11px]">Sort By:</span>
+                      <select
+                        value={psSortBy}
+                        onChange={(e) => {
+                          setPsSortBy(e.target.value);
+                          setPsPage(1);
+                        }}
+                        className="px-2 py-1 text-xs bg-base border border-hairline text-content focus:border-cyan focus:outline-none font-mono"
+                      >
+                        <option value="code_asc">Code (Ascending A-Z)</option>
+                        <option value="code_desc">Code (Descending Z-A)</option>
+                        <option value="domain_asc">Category / Track (A-Z)</option>
+                        <option value="title_asc">Title (A-Z)</option>
+                        <option value="teams_desc">Most Teams Assigned</option>
+                        <option value="teams_asc">Least Teams Assigned</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted font-mono text-[11px]">Per Page:</span>
+                      <select
+                        value={psPerPage}
+                        onChange={(e) => {
+                          setPsPerPage(Number(e.target.value));
+                          setPsPage(1);
+                        }}
+                        className="px-2 py-1 text-xs bg-base border border-hairline text-content focus:border-cyan focus:outline-none font-mono"
+                      >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={0}>Show All</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Problem Statements Table */}
+                <div className="border border-hairline bg-panel overflow-x-auto shadow-sm">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-hairline bg-base/60 text-muted uppercase text-[10px]">
+                        <th className="p-3 w-28">Code</th>
+                        <th className="p-3 w-48">Category / Track</th>
+                        <th className="p-3">Problem Title &amp; Brief</th>
+                        <th className="p-3 text-center w-32">Assigned Teams</th>
+                        <th className="p-3 text-right w-36">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-hairline font-mono">
+                      {paginatedProblemStatements.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center text-muted font-mono">
+                            No problem statements match your filter / search keyword.
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedProblemStatements.map((ps) => {
+                          const isCyber = ps.domain === "Cybersecurity";
+                          return (
+                            <tr key={ps.id || ps.code} className="hover:bg-panel/50 transition-colors">
+                              <td className="p-3 align-top font-bold">
+                                <span
+                                  className={`px-2 py-0.5 border text-xs ${
+                                    isCyber
+                                      ? "border-cyan/50 text-cyan bg-cyan/10"
+                                      : "border-purple-500/50 text-purple-400 bg-purple-950/30"
+                                  }`}
+                                >
+                                  {ps.code}
+                                </span>
+                              </td>
+
+                              <td className="p-3 align-top">
+                                <span className="text-[11px] text-muted block font-mono">
+                                  {ps.domain}
+                                </span>
+                              </td>
+
+                              <td className="p-3 align-top space-y-1">
+                                <div className="font-bold text-content text-sm">{ps.title}</div>
+                                <p className="text-xs text-muted leading-relaxed font-sans line-clamp-3">
+                                  {ps.description}
+                                </p>
+                              </td>
+
+                              <td className="p-3 align-top text-center">
+                                <span
+                                  className={`px-2 py-0.5 text-[11px] font-mono border ${
+                                    (ps.team_count || 0) > 0
+                                      ? "border-emerald-500/50 text-emerald-400 bg-emerald-950/30"
+                                      : "border-hairline text-subtle"
+                                  }`}
+                                >
+                                  {ps.team_count || 0} teams
+                                </span>
+                              </td>
+
+                              <td className="p-3 align-top text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditPsModal(ps)}
+                                    className="px-2.5 py-1 text-[11px] font-mono border border-cyan/40 bg-cyan/5 text-cyan hover:bg-cyan/20 transition-colors"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingPs(ps)}
+                                    className="px-2.5 py-1 text-[11px] font-mono border border-rose-500/40 bg-rose-950/20 text-rose-400 hover:bg-rose-950/50 transition-colors"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Controls Footer */}
+                {psPerPage > 0 && filteredAndSortedProblemStatements.length > psPerPage && (
+                  <div className="p-3 border border-hairline bg-panel flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono">
+                    <div className="text-muted">
+                      Showing{" "}
+                      <strong className="text-content">{(psPage - 1) * psPerPage + 1}</strong> to{" "}
+                      <strong className="text-content">
+                        {Math.min(psPage * psPerPage, filteredAndSortedProblemStatements.length)}
+                      </strong>{" "}
+                      of <strong className="text-content">{filteredAndSortedProblemStatements.length}</strong> statements
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={psPage <= 1}
+                        onClick={() => setPsPage((p) => Math.max(1, p - 1))}
+                        className="px-3 py-1 border border-hairline bg-base hover:bg-panel disabled:opacity-40 transition-colors text-content"
+                      >
+                        &larr; Previous
+                      </button>
+
+                      <span className="px-2 py-1 text-muted">
+                        Page <strong className="text-cyan">{psPage}</strong> of {psTotalPages}
+                      </span>
+
+                      <button
+                        type="button"
+                        disabled={psPage >= psTotalPages}
+                        onClick={() => setPsPage((p) => Math.min(psTotalPages, p + 1))}
+                        className="px-3 py-1 border border-hairline bg-base hover:bg-panel disabled:opacity-40 transition-colors text-content"
+                      >
+                        Next &rarr;
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Prompt when no category or search is active */
+              <div className="p-8 border border-dashed border-hairline bg-panel/40 text-center space-y-3">
+                <div className="text-2xl">📂</div>
+                <div className="text-sm font-bold text-content font-mono">
+                  Select a Category Track or Search to View Problem Statements
+                </div>
+                <p className="text-xs text-muted max-w-md mx-auto">
+                  Click on one of the track cards above or enter a keyword in the search bar to reveal and manage problem statements.
+                </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPsDomainFilter("all");
+                      setPsPage(1);
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-cyan border border-cyan/50 bg-cyan/10 hover:bg-cyan/20 transition-colors font-mono"
+                  >
+                    ⚡ View All Problem Statements ({problemStatements.length})
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 4: USER & ROLE MANAGEMENT (INSTANT PROMOTE / DEMOTE & DIRECT USER ADDITION) */}
         {activeTab === "users" && (
           <div className="space-y-4">
             {/* Header & Quick Action info */}
@@ -1330,6 +1943,254 @@ export default function AdminDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* ADD / EDIT PROBLEM STATEMENT MODAL */}
+      {isAddPsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-panel border border-cyan/40 w-full max-w-lg p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-hairline pb-3">
+              <div>
+                <div className="text-xs font-bold text-cyan uppercase">
+                  // {editingPs ? `EDIT STATEMENT [${editingPs.code}]` : "ADD PROBLEM STATEMENT"}
+                </div>
+                <h2 className="text-xl font-bold text-content mt-1">
+                  {editingPs ? `Edit Problem Statement` : "New Problem Statement"}
+                </h2>
+                <p className="text-[11px] text-muted mt-0.5">
+                  Directly saved to the PostgreSQL database and immediately available for team selection.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddPsModalOpen(false);
+                  setEditingPs(null);
+                }}
+                className="text-muted hover:text-content text-xl font-bold px-2 py-1"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProblemStatement} className="space-y-4 text-xs font-mono">
+              {/* Category Track Selector Buttons */}
+              <div className="space-y-2">
+                <label className="text-[11px] uppercase text-subtle font-semibold block">
+                  1. Assign Category Track
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPsForm({ ...psForm, domain: "Cybersecurity", customDomain: "" })}
+                    className={`p-2.5 border text-left font-bold text-xs transition-all flex flex-col justify-between ${
+                      psForm.domain === "Cybersecurity"
+                        ? "border-cyan bg-cyan/15 text-cyan ring-1 ring-cyan"
+                        : "border-hairline bg-base text-muted hover:text-content hover:border-hairline/80"
+                    }`}
+                  >
+                    <span>🛡️ Cybersecurity</span>
+                    <span className="text-[10px] font-normal text-subtle mt-0.5">Standard Track</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPsForm({ ...psForm, domain: "Innovation & Emerging Technologies", customDomain: "" })}
+                    className={`p-2.5 border text-left font-bold text-xs transition-all flex flex-col justify-between ${
+                      psForm.domain === "Innovation & Emerging Technologies"
+                        ? "border-purple-400 bg-purple-950/40 text-purple-300 ring-1 ring-purple-400"
+                        : "border-hairline bg-base text-muted hover:text-content hover:border-hairline/80"
+                    }`}
+                  >
+                    <span>⚡ Innovation &amp; Tech</span>
+                    <span className="text-[10px] font-normal text-subtle mt-0.5">Emerging Track</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPsForm({ ...psForm, domain: "Custom" })}
+                    className={`p-2.5 border text-left font-bold text-xs transition-all flex flex-col justify-between ${
+                      psForm.domain === "Custom" || (!["Cybersecurity", "Innovation & Emerging Technologies"].includes(psForm.domain))
+                        ? "border-amber bg-amber/15 text-amber ring-1 ring-amber"
+                        : "border-hairline bg-base text-muted hover:text-content hover:border-hairline/80"
+                    }`}
+                  >
+                    <span>🔮 Custom Track</span>
+                    <span className="text-[10px] font-normal text-subtle mt-0.5">+ Define Category</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* If other custom tracks exist in DB, show quick-select chips */}
+              {psDomainsList.filter(d => !["Cybersecurity", "Innovation & Emerging Technologies"].includes(d)).length > 0 && (
+                <div className="space-y-1.5 p-2.5 border border-hairline/80 bg-base/50 text-[11px]">
+                  <span className="text-subtle uppercase text-[10px] font-semibold block">
+                    Existing Custom Tracks in Database:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {psDomainsList.filter(d => !["Cybersecurity", "Innovation & Emerging Technologies"].includes(d)).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setPsForm({ ...psForm, domain: d, customDomain: "" })}
+                        className={`px-2.5 py-1 border text-xs font-mono transition-colors ${
+                          psForm.domain === d
+                            ? "border-amber bg-amber/20 text-amber font-bold"
+                            : "border-hairline bg-panel text-muted hover:text-content"
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* If Custom Track selected or custom name needed */}
+              {(psForm.domain === "Custom" || (!["Cybersecurity", "Innovation & Emerging Technologies"].includes(psForm.domain) && !psDomainsList.includes(psForm.domain))) && (
+                <div className="space-y-1.5 p-3 border border-amber/50 bg-amber/5 animate-fadeIn">
+                  <label className="text-[11px] uppercase text-amber font-semibold block flex items-center gap-1.5">
+                    <span>🔮 Custom Track / Category Name:</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={psForm.customDomain}
+                    onChange={(e) => setPsForm({ ...psForm, customDomain: e.target.value })}
+                    placeholder="e.g. AI & Machine Learning, Blockchain, Cloud Security..."
+                    className="w-full px-3 py-2 bg-base border border-amber/60 text-content focus:border-amber focus:outline-none font-bold"
+                  />
+                  <span className="text-[10px] text-muted block">
+                    * This creates a dedicated category card in Admin and a new track tab on the Problem Statements page.
+                  </span>
+                </div>
+              )}
+
+              {/* Problem Code Input */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase text-subtle font-semibold block">
+                  2. Problem Code (e.g. CS 19, IT 15, AI 01)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={psForm.code}
+                  onChange={(e) => setPsForm({ ...psForm, code: e.target.value })}
+                  placeholder="e.g. AI 01, CS 19, IT 15"
+                  className="w-full px-3 py-2 bg-base border border-hairline text-content focus:border-cyan focus:outline-none font-bold uppercase font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase text-subtle font-semibold block">
+                  Problem Title
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={psForm.title}
+                  onChange={(e) => setPsForm({ ...psForm, title: e.target.value })}
+                  placeholder="e.g. AI-Powered Zero Trust Gateway"
+                  className="w-full px-3 py-2 bg-base border border-hairline text-content focus:border-cyan focus:outline-none font-bold"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] uppercase text-subtle font-semibold block">
+                  Brief &amp; Description
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={psForm.description}
+                  onChange={(e) => setPsForm({ ...psForm, description: e.target.value })}
+                  placeholder="Describe the problem statement, objectives, and expected deliverables for participants..."
+                  className="w-full px-3 py-2 bg-base border border-hairline text-content focus:border-cyan focus:outline-none leading-relaxed font-sans text-xs"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-3 border-t border-hairline">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddPsModalOpen(false);
+                    setEditingPs(null);
+                  }}
+                  className="px-4 py-2 border border-hairline text-muted hover:text-content"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPs}
+                  className="px-5 py-2 font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  {savingPs ? "Saving to Database..." : editingPs ? "✓ Update Statement" : "+ Add Statement to DB"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE PROBLEM STATEMENT CONFIRMATION MODAL */}
+      {deletingPs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-panel border border-rose-500/50 w-full max-w-md p-6 space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-rose-500/30 pb-3">
+              <div>
+                <div className="text-xs font-bold text-rose-400 uppercase">// CONFIRM REMOVAL</div>
+                <h2 className="text-lg font-bold text-content mt-1">Delete Problem Statement</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeletingPs(null)}
+                className="text-muted hover:text-content text-xl font-bold px-2 py-1"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs font-mono text-muted">
+              <p className="text-content">
+                Are you sure you want to permanently delete:
+              </p>
+              <div className="p-3 border border-hairline bg-base space-y-1">
+                <div className="text-cyan font-bold">{deletingPs.code} — {deletingPs.title}</div>
+                <div className="text-[11px] text-subtle font-mono">{deletingPs.domain}</div>
+              </div>
+
+              {(deletingPs.team_count || 0) > 0 ? (
+                <div className="p-3 border border-amber/50 bg-amber/10 text-amber text-[11px] leading-relaxed">
+                  ⚠️ <strong>Notice:</strong> <strong>{deletingPs.team_count}</strong> registered team(s) currently have this problem statement selected. Deleting it will safely unlink the assignment so teams can choose another statement without losing any team data.
+                </div>
+              ) : (
+                <p className="text-[11px] text-subtle">
+                  No registered teams are currently assigned to this statement.
+                </p>
+              )}
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-3 border-t border-hairline">
+              <button
+                type="button"
+                onClick={() => setDeletingPs(null)}
+                className="px-4 py-2 border border-hairline text-muted hover:text-content text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingPsLoading}
+                onClick={handleConfirmDeletePs}
+                className="px-5 py-2 font-bold text-white bg-rose-600 hover:bg-rose-500 transition-colors disabled:opacity-50 text-xs flex items-center gap-2"
+              >
+                {deletingPsLoading ? "Deleting..." : "Permanently Delete PS"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CREATE NEW STAFF USER MODAL */}
       {isAddUserModalOpen && (

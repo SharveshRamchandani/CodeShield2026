@@ -1,12 +1,24 @@
 import { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getProblemStatements } from "../api/problemStatements";
 
 export default function ProblemStatementsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialDomain = searchParams.get("domain") || "All";
+
   const [problemStatements, setProblemStatements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedDomain, setSelectedDomain] = useState("All");
+  const [selectedDomain, setSelectedDomain] = useState(initialDomain);
   const [expandedId, setExpandedId] = useState(null);
+
+  // Sync if URL search param changes
+  useEffect(() => {
+    const d = searchParams.get("domain");
+    if (d) {
+      setSelectedDomain(d);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let isMounted = true;
@@ -36,11 +48,19 @@ export default function ProblemStatementsPage() {
     };
   }, []);
 
-  const domainOptions = [
-    { label: "All", value: "All" },
-    { label: "Cybersecurity", value: "Cybersecurity" },
-    { label: "Innovation & Emerging Tech", value: "Innovation & Emerging Technologies" },
-  ];
+  const domainOptions = useMemo(() => {
+    const list = [{ label: "All", value: "All" }];
+    const domains = Array.from(new Set(problemStatements.map((ps) => ps.domain).filter(Boolean)));
+    if (!domains.includes("Cybersecurity")) domains.unshift("Cybersecurity");
+    if (!domains.includes("Innovation & Emerging Technologies")) domains.push("Innovation & Emerging Technologies");
+    for (const d of domains) {
+      list.push({
+        label: d === "Innovation & Emerging Technologies" ? "Innovation & Emerging Tech" : d,
+        value: d,
+      });
+    }
+    return list;
+  }, [problemStatements]);
 
   // Filtered problem statements
   const filteredList = useMemo(() => {
@@ -79,13 +99,13 @@ export default function ProblemStatementsPage() {
       >
         <div className="max-w-6xl mx-auto flex flex-col items-start">
           <div className="text-xs font-mono uppercase text-cyan font-semibold mb-3">
-            // CATALOG &middot; 32 PROBLEM STATEMENTS
+            // CATALOG &middot; {problemStatements.length} PROBLEM STATEMENTS
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-content leading-none mb-4">
             Problem Statements
           </h1>
           <p className="text-base sm:text-lg text-muted font-normal max-w-2xl leading-relaxed">
-            Explore the 32 official challenge briefs for CodeShield 2026 across Cybersecurity and Innovation &amp; Emerging Technologies.
+            Explore the {problemStatements.length > 0 ? problemStatements.length : 32} official challenge briefs for CodeShield 2026 across Cybersecurity and Innovation &amp; Emerging Technologies.
           </p>
         </div>
       </section>
@@ -108,7 +128,16 @@ export default function ProblemStatementsPage() {
                   type="button"
                   role="tab"
                   aria-selected={isSelected}
-                  onClick={() => setSelectedDomain(opt.value)}
+                  onClick={() => {
+                    setSelectedDomain(opt.value);
+                    if (opt.value === "All") {
+                      const newParams = new URLSearchParams(searchParams);
+                      newParams.delete("domain");
+                      setSearchParams(newParams);
+                    } else {
+                      setSearchParams({ domain: opt.value });
+                    }
+                  }}
                   className={`transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan ${
                     isSelected
                       ? "text-cyan font-semibold border-b-2 border-cyan pb-0.5"
@@ -222,9 +251,9 @@ export default function ProblemStatementsPage() {
                       {/* Right: Domain Label + Expand Indicator */}
                       <div className="flex items-center justify-between md:justify-end gap-6 shrink-0 pl-20 md:pl-0">
                         <span className="text-xs font-mono text-muted uppercase">
-                          {item.domain === "Cybersecurity"
-                            ? "Cybersecurity"
-                            : "Innovation & Emerging Tech"}
+                          {item.domain === "Innovation & Emerging Technologies"
+                            ? "Innovation & Emerging Tech"
+                            : item.domain}
                         </span>
                         <span className="font-mono text-xs text-cyan shrink-0 w-6 text-right">
                           {isExpanded ? "[-]" : "[+]"}

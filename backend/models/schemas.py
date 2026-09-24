@@ -78,6 +78,17 @@ class ProblemStatementBase(BaseModel):
     domain: str
 
 
+class ProblemStatementCreate(ProblemStatementBase):
+    pass
+
+
+class ProblemStatementUpdate(BaseModel):
+    code: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    domain: Optional[str] = None
+
+
 class ProblemStatementOut(ProblemStatementBase):
     id: Optional[UUID] = None
 

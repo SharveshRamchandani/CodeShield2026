@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Link } from "react-router-dom";
+import { getProblemStatements } from "../api/problemStatements";
 
 const SCRAMBLE_CHARS = "01#$*+/<>[_]{}—X!Z?=";
 const MAX_ANIMATION_PLAYS = 2;
@@ -77,6 +78,64 @@ export default function HomePage() {
   };
 
   const [timeLeft, setTimeLeft] = useState(calculateTimeLeft());
+  const [problemStatements, setProblemStatements] = useState([]);
+  const [loadingPs, setLoadingPs] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    getProblemStatements()
+      .then((data) => {
+        if (isMounted && data) {
+          setProblemStatements(data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (isMounted) setLoadingPs(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const domainsList = useMemo(() => {
+    const uniqueDomains = Array.from(
+      new Set(problemStatements.map((ps) => ps.domain).filter(Boolean))
+    );
+
+    if (!uniqueDomains.includes("Cybersecurity")) {
+      uniqueDomains.unshift("Cybersecurity");
+    }
+    if (!uniqueDomains.includes("Innovation & Emerging Technologies")) {
+      uniqueDomains.push("Innovation & Emerging Technologies");
+    }
+
+    const defaultDescriptions = {
+      "Cybersecurity": "Offensive & defensive security challenges, vulnerability analysis, reverse engineering, application hardening, and cryptographic systems.",
+      "Innovation & Emerging Technologies": "Applied AI infrastructure, decentralized computing, distributed architecture, hardware integrations, and high-impact automated systems.",
+      "Custom Track": "Specialized challenges, custom engineering workflows, and cutting-edge exploratory technical systems.",
+    };
+
+    return uniqueDomains.map((domain, index) => {
+      const trackLetter = String.fromCharCode(65 + index);
+      const count = problemStatements.filter((ps) => ps.domain === domain).length;
+      const isTech = domain === "Innovation & Emerging Technologies";
+      const displayName = isTech ? "INNOVATION & EMERGING TECH" : domain.toUpperCase();
+
+      let description = defaultDescriptions[domain];
+      if (!description) {
+        description = `Specialized engineering track featuring real-world challenge briefs, innovative architectures, and rapid technical prototyping.`;
+      }
+
+      return {
+        trackLetter,
+        domain,
+        displayName,
+        count,
+        description,
+      };
+    });
+  }, [problemStatements]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -183,24 +242,27 @@ export default function HomePage() {
                 // CHALLENGE CATALOG
               </div>
               <div className="text-xl sm:text-2xl font-bold text-content">
-                32 PROBLEM STATEMENTS
+                {problemStatements.length > 0 ? problemStatements.length : 32} PROBLEM STATEMENTS
               </div>
             </div>
 
-            {/* Two Domains Plainly Listed */}
+            {/* Competition Domains Dynamically Listed */}
             <div className="pb-6 border-b border-hairline">
               <div className="text-[11px] text-subtle uppercase mb-3">
                 // COMPETITION DOMAINS
               </div>
               <ul className="space-y-2 text-sm text-content">
-                <li className="flex items-center gap-2">
-                  <span className="text-cyan font-bold">&gt;</span>
-                  <span className="font-semibold">CYBERSECURITY</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-cyan font-bold">&gt;</span>
-                  <span className="font-semibold">INNOVATION &amp; EMERGING TECH</span>
-                </li>
+                {domainsList.map((item) => (
+                  <li key={item.domain} className="flex items-center gap-2">
+                    <span className="text-cyan font-bold">&gt;</span>
+                    <Link
+                      to={`/problem-statements?domain=${encodeURIComponent(item.domain)}`}
+                      className="font-semibold hover:text-cyan transition-colors"
+                    >
+                      {item.displayName}
+                    </Link>
+                  </li>
+                ))}
               </ul>
             </div>
           </div>
@@ -245,41 +307,62 @@ export default function HomePage() {
       {/* Architectural Divider */}
       <div className="w-full border-t border-hairline" />
 
-      {/* Domain Details Section */}
+      {/* Domain Details Section (Dynamic) */}
       <section className="w-full max-w-6xl mx-auto px-6 sm:px-10 py-20 md:py-28">
-        <div className="mb-10 font-mono">
-          <div className="text-xs uppercase text-cyan font-semibold mb-1">
-            // DOMAINS
+        <div className="mb-10 font-mono flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase text-cyan font-semibold mb-1">
+              // DOMAINS
+            </div>
+            <div className="text-sm text-muted">
+              {domainsList.length} focused technical {domainsList.length === 1 ? "track" : "tracks"} for high-impact innovation.
+            </div>
           </div>
-          <div className="text-sm text-muted">
-            Two focused technical tracks. No third track.
-          </div>
+          <Link
+            to="/problem-statements"
+            className="text-xs font-mono text-cyan hover:underline flex items-center gap-1.5 self-start sm:self-auto"
+          >
+            <span>Browse All {problemStatements.length || 32} Problem Statements</span>
+            <span>&rarr;</span>
+          </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="border border-hairline bg-panel/60 p-8 flex flex-col justify-between">
-            <div>
-              <div className="text-xs font-mono text-cyan mb-2 font-semibold uppercase">TRACK A</div>
-              <h3 className="text-2xl font-bold text-content mb-4">
-                CYBERSECURITY
-              </h3>
-              <p className="text-sm text-muted leading-relaxed">
-                Offensive &amp; defensive security challenges, vulnerability analysis, reverse engineering, application hardening, and cryptographic systems.
-              </p>
-            </div>
-          </div>
+        <div className={`grid grid-cols-1 ${domainsList.length === 1 ? "max-w-xl" : domainsList.length === 2 ? "md:grid-cols-2" : "md:grid-cols-2 lg:grid-cols-3"} gap-6`}>
+          {domainsList.map((item) => (
+            <div
+              key={item.domain}
+              className="border border-hairline bg-panel/60 p-8 flex flex-col justify-between hover:border-cyan/40 transition-colors group"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-mono text-cyan font-semibold uppercase">
+                    TRACK {item.trackLetter}
+                  </div>
+                  {item.count > 0 && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 border border-hairline bg-panel text-subtle">
+                      {item.count} PS
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-2xl font-bold text-content mb-4 tracking-tight group-hover:text-cyan transition-colors">
+                  {item.displayName}
+                </h3>
+                <p className="text-sm text-muted leading-relaxed mb-6">
+                  {item.description}
+                </p>
+              </div>
 
-          <div className="border border-hairline bg-panel/60 p-8 flex flex-col justify-between">
-            <div>
-              <div className="text-xs font-mono text-cyan mb-2 font-semibold uppercase">TRACK B</div>
-              <h3 className="text-2xl font-bold text-content mb-4">
-                INNOVATION &amp; EMERGING TECH
-              </h3>
-              <p className="text-sm text-muted leading-relaxed">
-                Applied AI infrastructure, decentralized computing, distributed architecture, hardware integrations, and high-impact automated systems.
-              </p>
+              <div className="pt-4 border-t border-hairline">
+                <Link
+                  to={`/problem-statements?domain=${encodeURIComponent(item.domain)}`}
+                  className="text-xs font-mono text-cyan hover:underline flex items-center justify-between"
+                >
+                  <span>Explore Track Statements</span>
+                  <span>&rarr;</span>
+                </Link>
+              </div>
             </div>
-          </div>
+          ))}
         </div>
       </section>
     </div>

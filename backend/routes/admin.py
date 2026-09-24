@@ -22,6 +22,9 @@ from models.schemas import (
     SubmissionOut,
     SubmissionLockUpdate,
     SystemSettingsOut,
+    ProblemStatementCreate,
+    ProblemStatementUpdate,
+    ProblemStatementOut,
 )
 from database import get_db
 from utils.auth import require_role, hash_password, get_current_user
@@ -1113,4 +1116,211 @@ def admin_toggle_submission_lock(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update submission lock status",
         )
+
+
+# =========================================================================
+# 7. Problem Statements Management (Admin)
+# =========================================================================
+
+@router.get(
+    "/problem-statements",
+    response_model=List[Dict[str, Any]],
+    status_code=status.HTTP_200_OK,
+    summary="List all problem statements with assigned team count (Admin)",
+)
+def admin_list_problem_statements(
+    db=Depends(get_db),
+):
+    """
+    Fetch all problem statements along with the number of registered teams
+    that have selected each problem statement.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT 
+                    ps.id, 
+                    ps.code, 
+                    ps.title, 
+                    ps.description, 
+                    ps.domain,
+                    COUNT(t.id) AS team_count
+                FROM problem_statements ps
+                LEFT JOIN teams t ON t.problem_statement_id = ps.id
+                GROUP BY ps.id, ps.code, ps.title, ps.description, ps.domain
+                ORDER BY ps.domain ASC, ps.code ASC;
+            """)
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+    except Exception as exc:
+        logger.error(f"Error fetching problem statements for admin: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve problem statements",
+        )
+
+
+@router.post(
+    "/problem-statements",
+    response_model=ProblemStatementOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new problem statement (Admin)",
+)
+def admin_create_problem_statement(
+    ps_data: ProblemStatementCreate,
+    db=Depends(get_db),
+):
+    """
+    Create a new problem statement directly in the database.
+    Immediately reflects across public catalogue and team registrations.
+    """
+    code = ps_data.code.strip()
+    title = ps_data.title.strip()
+    description = ps_data.description.strip()
+    domain = ps_data.domain.strip()
+
+    if not code or not title or not description or not domain:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Code, Title, Description, and Domain are all required.",
+        )
+
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM problem_statements WHERE LOWER(code) = LOWER(%s);", (code,))
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"A problem statement with code '{code}' already exists.",
+                )
+
+            cur.execute("""
+                INSERT INTO problem_statements (code, title, description, domain)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, code, title, description, domain;
+            """, (code, title, description, domain))
+            created = cur.fetchone()
+            db.commit()
+            return dict(created)
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error creating problem statement: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while saving problem statement",
+        )
+
+
+@router.put(
+    "/problem-statements/{ps_id}",
+    response_model=ProblemStatementOut,
+    status_code=status.HTTP_200_OK,
+    summary="Update an existing problem statement (Admin)",
+)
+def admin_update_problem_statement(
+    ps_id: UUID,
+    ps_data: ProblemStatementCreate,
+    db=Depends(get_db),
+):
+    """
+    Update an existing problem statement's code, title, description, and domain.
+    """
+    code = ps_data.code.strip()
+    title = ps_data.title.strip()
+    description = ps_data.description.strip()
+    domain = ps_data.domain.strip()
+
+    if not code or not title or not description or not domain:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Code, Title, Description, and Domain are all required.",
+        )
+
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM problem_statements WHERE id = %s;", (str(ps_id),))
+            if not cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Problem statement not found.",
+                )
+
+            cur.execute(
+                "SELECT id FROM problem_statements WHERE LOWER(code) = LOWER(%s) AND id != %s;",
+                (code, str(ps_id)),
+            )
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Another problem statement with code '{code}' already exists.",
+                )
+
+            cur.execute("""
+                UPDATE problem_statements
+                SET code = %s, title = %s, description = %s, domain = %s
+                WHERE id = %s
+                RETURNING id, code, title, description, domain;
+            """, (code, title, description, domain, str(ps_id)))
+            updated = cur.fetchone()
+            db.commit()
+            return dict(updated)
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error updating problem statement: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while updating problem statement",
+        )
+
+
+@router.delete(
+    "/problem-statements/{ps_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Delete a problem statement (Admin)",
+)
+def admin_delete_problem_statement(
+    ps_id: UUID,
+    db=Depends(get_db),
+):
+    """
+    Delete a problem statement directly from the database.
+    Any teams assigned to this problem statement will have their assignment unlinked safely.
+    """
+    try:
+        with db.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id, code, title FROM problem_statements WHERE id = %s;", (str(ps_id),))
+            ps = cur.fetchone()
+            if not ps:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Problem statement not found.",
+                )
+
+            # Safely unlink any teams assigned to this problem statement
+            cur.execute("UPDATE teams SET problem_statement_id = NULL WHERE problem_statement_id = %s;", (str(ps_id),))
+            cur.execute("DELETE FROM problem_statements WHERE id = %s;", (str(ps_id),))
+            db.commit()
+
+            return {
+                "message": f"Problem statement '{ps['code']} - {ps['title']}' was deleted successfully.",
+                "deleted_id": str(ps_id),
+                "code": ps["code"],
+            }
+    except HTTPException:
+        db.rollback()
+        raise
+    except psycopg2.Error as db_err:
+        db.rollback()
+        logger.error(f"Database error deleting problem statement: {db_err}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error while deleting problem statement",
+        )
+
 

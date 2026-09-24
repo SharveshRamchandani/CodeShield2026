@@ -38,7 +38,7 @@ const FAQS = [
     category: "eligibility",
     question: "What domains and tracks are available for projects?",
     answer:
-      "The hackathon features two primary innovation tracks with 32 curated problem statements: 1) Cybersecurity (CS-01 to CS-18) and 2) Innovation & Emerging Technologies (IT-01 to IT-14). Note: The previous CSIT track has been officially merged into Cybersecurity.",
+      "The hackathon features curated challenge tracks including Cybersecurity, Innovation & Emerging Technologies, and any custom innovation tracks. Browse the live Problem Statements catalogue to view all active tracks and problem statements.",
   },
   {
     id: 5,

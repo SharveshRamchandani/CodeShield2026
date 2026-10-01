@@ -758,9 +758,9 @@ def export_teams_csv(
                     t.team_code, t.team_name, t.confirmed, t.email_sent, t.team_size,
                     t.leader_name, t.leader_email, t.leader_phone,
                     t.leader_college_id, t.leader_department, t.leader_year,
-                    t.member2_name, t.member2_college_id, t.member2_email,
-                    t.member3_name, t.member3_college_id, t.member3_email,
-                    t.member4_name, t.member4_college_id, t.member4_email,
+                    t.member2_name, t.member2_college_id, t.member2_phone, t.member2_email,
+                    t.member3_name, t.member3_college_id, t.member3_phone, t.member3_email,
+                    t.member4_name, t.member4_college_id, t.member4_phone, t.member4_email,
                     ps.code AS problem_code, ps.title AS problem_title, ps.domain AS problem_domain,
                     t.attendance_day1, t.attendance_day2, t.created_at
                 FROM teams t
@@ -776,9 +776,9 @@ def export_teams_csv(
             writer.writerow([
                 "Team Code", "Team Name", "Confirmed", "Email Sent", "Team Size",
                 "Leader Name", "Leader Email", "Leader Phone", "College ID", "Department", "Year",
-                "Member 2 Name", "Member 2 College ID", "Member 2 Email",
-                "Member 3 Name", "Member 3 College ID", "Member 3 Email",
-                "Member 4 Name", "Member 4 College ID", "Member 4 Email",
+                "Member 2 Name", "Member 2 College ID", "Member 2 Phone", "Member 2 Email",
+                "Member 3 Name", "Member 3 College ID", "Member 3 Phone", "Member 3 Email",
+                "Member 4 Name", "Member 4 College ID", "Member 4 Phone", "Member 4 Email",
                 "PS Code", "PS Title", "Track",
                 "Day 1 Attendance", "Day 2 Attendance", "Registered At"
             ])
@@ -798,12 +798,15 @@ def export_teams_csv(
                     r["leader_year"],
                     r["member2_name"] or "",
                     r["member2_college_id"] or "",
+                    r.get("member2_phone") or "",
                     r["member2_email"] or "",
                     r["member3_name"] or "",
                     r["member3_college_id"] or "",
+                    r.get("member3_phone") or "",
                     r["member3_email"] or "",
                     r["member4_name"] or "",
                     r["member4_college_id"] or "",
+                    r.get("member4_phone") or "",
                     r["member4_email"] or "",
                     r["problem_code"] or "",
                     r["problem_title"] or "",

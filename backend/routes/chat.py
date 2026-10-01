@@ -69,7 +69,7 @@ EVENT FACTS (fixed, don't hallucinate beyond these):
 - 24-hour internal hackathon, hybrid format
 - Final presentation happens at the end of the event
 - Exclusively for BIT Sathy students
-- Teams: 2-4 members, each needs name, roll/college ID, email
+- Teams: 1-4 members (minimum 1, maximum 4), all members need name, roll/college ID, mobile number, and @bitsathy.ac.in email
 - Only two domains: Cybersecurity and Innovation & Emerging Technologies (there is no separate "CSIT" track — it was merged into Cybersecurity)
 - Contact: cyberclub@bitsathy.ac.in
 

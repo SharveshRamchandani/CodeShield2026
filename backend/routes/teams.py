@@ -77,12 +77,56 @@ def register_team(
                     detail="Team name is already taken. Please choose a different team name.",
                 )
 
-            # Validate unique college ID / roll number across all team members and existing teams
+            # Email domain validation: Leader and all teammates must use @bitsathy.ac.in
+            if not team_data.leader_email or not team_data.leader_email.strip().lower().endswith("@bitsathy.ac.in"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Leader email must be an official @bitsathy.ac.in email address.",
+                )
+
+            # Validate required fields for active teammates based on team_size (1 to 4)
+            if team_data.team_size >= 2:
+                if not (team_data.member2_name and team_data.member2_college_id and team_data.member2_phone and team_data.member2_email):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Member 2 Name, Roll / College ID, Mobile Number, and @bitsathy.ac.in Email are all required.",
+                    )
+                if not team_data.member2_email.strip().lower().endswith("@bitsathy.ac.in"):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Member 2 must use an official @bitsathy.ac.in email address.",
+                    )
+
+            if team_data.team_size >= 3:
+                if not (team_data.member3_name and team_data.member3_college_id and team_data.member3_phone and team_data.member3_email):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Member 3 Name, Roll / College ID, Mobile Number, and @bitsathy.ac.in Email are all required.",
+                    )
+                if not team_data.member3_email.strip().lower().endswith("@bitsathy.ac.in"):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Member 3 must use an official @bitsathy.ac.in email address.",
+                    )
+
+            if team_data.team_size >= 4:
+                if not (team_data.member4_name and team_data.member4_college_id and team_data.member4_phone and team_data.member4_email):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Member 4 Name, Roll / College ID, Mobile Number, and @bitsathy.ac.in Email are all required.",
+                    )
+                if not team_data.member4_email.strip().lower().endswith("@bitsathy.ac.in"):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Member 4 must use an official @bitsathy.ac.in email address.",
+                    )
+
+            # Validate unique college ID / roll number across all active team members and existing teams
             submitted_college_ids = [
                 team_data.leader_college_id.strip().upper(),
-                team_data.member2_college_id.strip().upper() if team_data.member2_college_id else None,
-                team_data.member3_college_id.strip().upper() if team_data.member3_college_id else None,
-                team_data.member4_college_id.strip().upper() if team_data.member4_college_id else None,
+                team_data.member2_college_id.strip().upper() if (team_data.team_size >= 2 and team_data.member2_college_id) else None,
+                team_data.member3_college_id.strip().upper() if (team_data.team_size >= 3 and team_data.member3_college_id) else None,
+                team_data.member4_college_id.strip().upper() if (team_data.team_size >= 4 and team_data.member4_college_id) else None,
             ]
             submitted_college_ids = [cid for cid in submitted_college_ids if cid]
 
@@ -122,9 +166,9 @@ def register_team(
             # Validate duplicate email addresses across all submitted members
             submitted_emails = [
                 team_data.leader_email.strip().lower(),
-                team_data.member2_email.strip().lower() if team_data.member2_email else None,
-                team_data.member3_email.strip().lower() if team_data.member3_email else None,
-                team_data.member4_email.strip().lower() if team_data.member4_email else None,
+                team_data.member2_email.strip().lower() if (team_data.team_size >= 2 and team_data.member2_email) else None,
+                team_data.member3_email.strip().lower() if (team_data.team_size >= 3 and team_data.member3_email) else None,
+                team_data.member4_email.strip().lower() if (team_data.team_size >= 4 and team_data.member4_email) else None,
             ]
             submitted_emails = [em for em in submitted_emails if em]
 
@@ -161,6 +205,25 @@ def register_team(
                     detail=f"Email address '{existing_email_dup['email']}' is already registered under team '{existing_email_dup['team_name']}' ({existing_email_dup['team_code']}).",
                 )
 
+            # Validate duplicate mobile numbers across all submitted members
+            submitted_phones = [
+                team_data.leader_phone.strip() if team_data.leader_phone else None,
+                team_data.member2_phone.strip() if (team_data.team_size >= 2 and team_data.member2_phone) else None,
+                team_data.member3_phone.strip() if (team_data.team_size >= 3 and team_data.member3_phone) else None,
+                team_data.member4_phone.strip() if (team_data.team_size >= 4 and team_data.member4_phone) else None,
+            ]
+            submitted_phones = [p for p in submitted_phones if p]
+
+            # 1. Intra-team duplicate phone check
+            seen_phones = set()
+            for p in submitted_phones:
+                if p in seen_phones:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Duplicate mobile number '{p}' submitted within the same team registration.",
+                    )
+                seen_phones.add(p)
+
             # Validate problem_statement_id if provided
             if team_data.problem_statement_id:
                 cur.execute(
@@ -180,9 +243,9 @@ def register_team(
                     team_name, team_code, team_size,
                     leader_name, leader_email, leader_phone, leader_college_id,
                     leader_department, leader_year,
-                    member2_name, member2_college_id, member2_email,
-                    member3_name, member3_college_id, member3_email,
-                    member4_name, member4_college_id, member4_email,
+                    member2_name, member2_college_id, member2_phone, member2_email,
+                    member3_name, member3_college_id, member3_phone, member3_email,
+                    member4_name, member4_college_id, member4_phone, member4_email,
                     problem_statement_id,
                     attendance_day1, attendance_day2,
                     confirmed
@@ -190,9 +253,9 @@ def register_team(
                     %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s,
-                    %s, %s, %s,
-                    %s, %s, %s,
-                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
                     %s,
                     FALSE, FALSE,
                     TRUE
@@ -210,15 +273,18 @@ def register_team(
                     team_data.leader_college_id.strip(),
                     team_data.leader_department.strip(),
                     team_data.leader_year.strip(),
-                    team_data.member2_name.strip() if team_data.member2_name else None,
-                    team_data.member2_college_id.strip() if team_data.member2_college_id else None,
-                    team_data.member2_email.strip().lower() if team_data.member2_email else None,
-                    team_data.member3_name.strip() if team_data.member3_name else None,
-                    team_data.member3_college_id.strip() if team_data.member3_college_id else None,
-                    team_data.member3_email.strip().lower() if team_data.member3_email else None,
-                    team_data.member4_name.strip() if team_data.member4_name else None,
-                    team_data.member4_college_id.strip() if team_data.member4_college_id else None,
-                    team_data.member4_email.strip().lower() if team_data.member4_email else None,
+                    team_data.member2_name.strip() if (team_data.team_size >= 2 and team_data.member2_name) else None,
+                    team_data.member2_college_id.strip() if (team_data.team_size >= 2 and team_data.member2_college_id) else None,
+                    team_data.member2_phone.strip() if (team_data.team_size >= 2 and team_data.member2_phone) else None,
+                    team_data.member2_email.strip().lower() if (team_data.team_size >= 2 and team_data.member2_email) else None,
+                    team_data.member3_name.strip() if (team_data.team_size >= 3 and team_data.member3_name) else None,
+                    team_data.member3_college_id.strip() if (team_data.team_size >= 3 and team_data.member3_college_id) else None,
+                    team_data.member3_phone.strip() if (team_data.team_size >= 3 and team_data.member3_phone) else None,
+                    team_data.member3_email.strip().lower() if (team_data.team_size >= 3 and team_data.member3_email) else None,
+                    team_data.member4_name.strip() if (team_data.team_size >= 4 and team_data.member4_name) else None,
+                    team_data.member4_college_id.strip() if (team_data.team_size >= 4 and team_data.member4_college_id) else None,
+                    team_data.member4_phone.strip() if (team_data.team_size >= 4 and team_data.member4_phone) else None,
+                    team_data.member4_email.strip().lower() if (team_data.team_size >= 4 and team_data.member4_email) else None,
                     str(team_data.problem_statement_id) if team_data.problem_statement_id else None,
                 ),
             )
@@ -226,13 +292,13 @@ def register_team(
             db.commit()
 
             # Prepare member summary for confirmation email
-            members = [f"{team_data.leader_name.strip()} (Leader)"]
-            if team_data.member2_name:
-                members.append(f"{team_data.member2_name.strip()} ({team_data.member2_college_id or 'Member 2'})")
-            if team_data.member3_name:
-                members.append(f"{team_data.member3_name.strip()} ({team_data.member3_college_id or 'Member 3'})")
-            if team_data.member4_name:
-                members.append(f"{team_data.member4_name.strip()} ({team_data.member4_college_id or 'Member 4'})")
+            members = [f"{team_data.leader_name.strip()} (Leader - {team_data.leader_phone.strip()})"]
+            if team_data.team_size >= 2 and team_data.member2_name:
+                members.append(f"{team_data.member2_name.strip()} ({team_data.member2_college_id or 'Member 2'}) - {team_data.member2_phone or ''}")
+            if team_data.team_size >= 3 and team_data.member3_name:
+                members.append(f"{team_data.member3_name.strip()} ({team_data.member3_college_id or 'Member 3'}) - {team_data.member3_phone or ''}")
+            if team_data.team_size >= 4 and team_data.member4_name:
+                members.append(f"{team_data.member4_name.strip()} ({team_data.member4_college_id or 'Member 4'}) - {team_data.member4_phone or ''}")
 
             # Send registration details email via FastAPI BackgroundTask to leader only
             background_tasks.add_task(

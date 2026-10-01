@@ -42,7 +42,7 @@ export default function RegistrationPage() {
 
   const [formData, setFormData] = useState(() => ({
     team_name: "",
-    team_size: 2,
+    team_size: 4,
     leader_name: pendingReg?.name || location.state?.prefillName || "",
     leader_email: pendingReg?.email || location.state?.prefillEmail || "",
     leader_phone: "",
@@ -51,12 +51,15 @@ export default function RegistrationPage() {
     leader_year: "3rd Year",
     member2_name: "",
     member2_college_id: "",
+    member2_phone: "",
     member2_email: "",
     member3_name: "",
     member3_college_id: "",
+    member3_phone: "",
     member3_email: "",
     member4_name: "",
     member4_college_id: "",
+    member4_phone: "",
     member4_email: "",
     problem_statement_id: "",
   }));
@@ -121,8 +124,125 @@ export default function RegistrationPage() {
       setErrorMessage("Please enter your team name.");
       return;
     }
-    if (!formData.leader_name.trim() || !formData.leader_email.trim() || !formData.leader_phone.trim()) {
-      setErrorMessage("Please complete all required leader contact fields.");
+
+    // Validate leader
+    if (
+      !formData.leader_name.trim() ||
+      !formData.leader_email.trim() ||
+      !formData.leader_phone.trim() ||
+      !formData.leader_college_id.trim() ||
+      !formData.leader_department.trim()
+    ) {
+      setErrorMessage("Please complete all required leader fields (Name, Roll ID, Mobile, Email, Department).");
+      return;
+    }
+
+    if (!formData.leader_email.trim().toLowerCase().endsWith("@bitsathy.ac.in")) {
+      setErrorMessage("Leader email must be an official @bitsathy.ac.in account.");
+      return;
+    }
+
+    // Validate teammates according to team size
+    if (formData.team_size >= 2) {
+      if (!formData.member2_name.trim()) {
+        setErrorMessage("Please enter Member 2's Full Name.");
+        return;
+      }
+      if (!formData.member2_college_id.trim()) {
+        setErrorMessage("Please enter Member 2's Roll / College ID.");
+        return;
+      }
+      if (!formData.member2_phone.trim()) {
+        setErrorMessage("Please enter Member 2's Mobile Number.");
+        return;
+      }
+      if (!formData.member2_email.trim()) {
+        setErrorMessage("Please enter Member 2's Email Address.");
+        return;
+      }
+      if (!formData.member2_email.trim().toLowerCase().endsWith("@bitsathy.ac.in")) {
+        setErrorMessage("Member 2 must use an official @bitsathy.ac.in email address.");
+        return;
+      }
+    }
+
+    if (formData.team_size >= 3) {
+      if (!formData.member3_name.trim()) {
+        setErrorMessage("Please enter Member 3's Full Name.");
+        return;
+      }
+      if (!formData.member3_college_id.trim()) {
+        setErrorMessage("Please enter Member 3's Roll / College ID.");
+        return;
+      }
+      if (!formData.member3_phone.trim()) {
+        setErrorMessage("Please enter Member 3's Mobile Number.");
+        return;
+      }
+      if (!formData.member3_email.trim()) {
+        setErrorMessage("Please enter Member 3's Email Address.");
+        return;
+      }
+      if (!formData.member3_email.trim().toLowerCase().endsWith("@bitsathy.ac.in")) {
+        setErrorMessage("Member 3 must use an official @bitsathy.ac.in email address.");
+        return;
+      }
+    }
+
+    if (formData.team_size >= 4) {
+      if (!formData.member4_name.trim()) {
+        setErrorMessage("Please enter Member 4's Full Name.");
+        return;
+      }
+      if (!formData.member4_college_id.trim()) {
+        setErrorMessage("Please enter Member 4's Roll / College ID.");
+        return;
+      }
+      if (!formData.member4_phone.trim()) {
+        setErrorMessage("Please enter Member 4's Mobile Number.");
+        return;
+      }
+      if (!formData.member4_email.trim()) {
+        setErrorMessage("Please enter Member 4's Email Address.");
+        return;
+      }
+      if (!formData.member4_email.trim().toLowerCase().endsWith("@bitsathy.ac.in")) {
+        setErrorMessage("Member 4 must use an official @bitsathy.ac.in email address.");
+        return;
+      }
+    }
+
+    // Intra-form duplicate validation
+    const emails = [formData.leader_email.trim().toLowerCase()];
+    const collegeIds = [formData.leader_college_id.trim().toUpperCase()];
+    const phones = [formData.leader_phone.trim()];
+
+    if (formData.team_size >= 2) {
+      emails.push(formData.member2_email.trim().toLowerCase());
+      collegeIds.push(formData.member2_college_id.trim().toUpperCase());
+      phones.push(formData.member2_phone.trim());
+    }
+    if (formData.team_size >= 3) {
+      emails.push(formData.member3_email.trim().toLowerCase());
+      collegeIds.push(formData.member3_college_id.trim().toUpperCase());
+      phones.push(formData.member3_phone.trim());
+    }
+    if (formData.team_size >= 4) {
+      emails.push(formData.member4_email.trim().toLowerCase());
+      collegeIds.push(formData.member4_college_id.trim().toUpperCase());
+      phones.push(formData.member4_phone.trim());
+    }
+
+    if (new Set(emails).size !== emails.length) {
+      setErrorMessage("Duplicate email addresses entered. Every team member must have a distinct @bitsathy.ac.in email.");
+      return;
+    }
+    if (new Set(collegeIds).size !== collegeIds.length) {
+      setErrorMessage("Duplicate Roll / College IDs entered. Every team member must have a distinct Roll ID.");
+      return;
+    }
+    if (new Set(phones).size !== phones.length) {
+      setErrorMessage("Duplicate Mobile Numbers entered. Every team member must have a distinct mobile number.");
       return;
     }
 
@@ -131,14 +251,17 @@ export default function RegistrationPage() {
       const payload = {
         ...formData,
         problem_statement_id: formData.problem_statement_id || null,
-        member2_name: formData.team_size >= 2 ? formData.member2_name : null,
-        member2_college_id: formData.team_size >= 2 ? formData.member2_college_id : null,
+        member2_name: formData.team_size >= 2 ? formData.member2_name.trim() : null,
+        member2_college_id: formData.team_size >= 2 ? formData.member2_college_id.trim() : null,
+        member2_phone: formData.team_size >= 2 ? formData.member2_phone.trim() : null,
         member2_email: formData.team_size >= 2 && formData.member2_email ? formData.member2_email.trim().toLowerCase() : null,
-        member3_name: formData.team_size >= 3 ? formData.member3_name : null,
-        member3_college_id: formData.team_size >= 3 ? formData.member3_college_id : null,
+        member3_name: formData.team_size >= 3 ? formData.member3_name.trim() : null,
+        member3_college_id: formData.team_size >= 3 ? formData.member3_college_id.trim() : null,
+        member3_phone: formData.team_size >= 3 ? formData.member3_phone.trim() : null,
         member3_email: formData.team_size >= 3 && formData.member3_email ? formData.member3_email.trim().toLowerCase() : null,
-        member4_name: formData.team_size >= 4 ? formData.member4_name : null,
-        member4_college_id: formData.team_size >= 4 ? formData.member4_college_id : null,
+        member4_name: formData.team_size >= 4 ? formData.member4_name.trim() : null,
+        member4_college_id: formData.team_size >= 4 ? formData.member4_college_id.trim() : null,
+        member4_phone: formData.team_size >= 4 ? formData.member4_phone.trim() : null,
         member4_email: formData.team_size >= 4 && formData.member4_email ? formData.member4_email.trim().toLowerCase() : null,
       };
 
@@ -194,13 +317,13 @@ export default function RegistrationPage() {
               to="/login"
               className="px-4 py-2 text-xs font-bold text-zinc-950 bg-emerald-400 hover:bg-emerald-300 transition-colors"
             >
-              Sign In to Participant Dashboard &rarr;
+              Sign In to Participant Dashboard →
             </Link>
             <Link
               to="/problem-statements"
               className="px-4 py-2 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors"
             >
-              Browse Problem Statements &rarr;
+              Browse Problem Statements →
             </Link>
             <Link
               to="/"
@@ -226,7 +349,7 @@ export default function RegistrationPage() {
             Register Your Team
           </h1>
           <p className="text-xs text-muted mt-2 leading-relaxed">
-            Teams can have 2 to 4 members. The team leader will receive an email with full registration details upon submission.
+            Teams can have 1 to 4 members. All teammates must provide their Name, Roll/College ID, Mobile Number, and official @bitsathy.ac.in email.
           </p>
           {formData.leader_email && (
             <div className="mt-3 inline-flex items-center gap-2 px-2.5 py-1 border border-cyan/30 bg-cyan/10 text-[11px] text-cyan">
@@ -280,6 +403,7 @@ export default function RegistrationPage() {
                   onChange={handleChange}
                   className="w-full px-3.5 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none focus:ring-1 focus:ring-cyan"
                 >
+                  <option value={1}>1 Member (Solo)</option>
                   <option value={2}>2 Members</option>
                   <option value={3}>3 Members</option>
                   <option value={4}>4 Members</option>
@@ -339,7 +463,7 @@ export default function RegistrationPage() {
                     Leader Email Address *
                   </label>
                   <span className="text-[10px] text-emerald-400 font-mono">
-                    ✓ Verified Google Account
+                    ✓ Verified @bitsathy.ac.in
                   </span>
                 </div>
                 <input
@@ -356,7 +480,7 @@ export default function RegistrationPage() {
 
               <div className="space-y-1">
                 <label htmlFor="leader_phone" className="text-xs text-subtle font-semibold block uppercase">
-                  Phone Number *
+                  Mobile Number *
                 </label>
                 <input
                   id="leader_phone"
@@ -424,70 +548,137 @@ export default function RegistrationPage() {
 
           {/* Section 3: Team Members */}
           <div className="space-y-4">
-            <div className="text-xs font-semibold text-cyan uppercase pb-2 border-b border-hairline/60">
-              3. Team Members
+            <div className="flex items-center justify-between pb-2 border-b border-hairline/60">
+              <div className="text-xs font-semibold text-cyan uppercase">
+                3. Teammate Details
+              </div>
+              <span className="text-[10px] text-muted font-mono">
+                {formData.team_size === 1 ? "1 Member (Solo)" : `${formData.team_size} Members Total`}
+              </span>
             </div>
 
-            {/* Member 2 */}
-            <div className="p-4 border border-hairline bg-base/50 space-y-3">
-              <div className="text-xs text-subtle font-semibold uppercase">Member 2</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  type="text"
-                  name="member2_name"
-                  value={formData.member2_name}
-                  onChange={handleChange}
-                  placeholder="Member 2 Full Name"
-                  className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                />
-                <input
-                  type="text"
-                  name="member2_college_id"
-                  value={formData.member2_college_id}
-                  onChange={handleChange}
-                  placeholder="Roll / College ID"
-                  className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                />
-                <input
-                  type="email"
-                  name="member2_email"
-                  value={formData.member2_email}
-                  onChange={handleChange}
-                  placeholder="member2@bitsathy.ac.in"
-                  className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                />
+            {formData.team_size === 1 && (
+              <div className="p-4 border border-dashed border-hairline bg-base/30 text-center text-xs text-muted">
+                Solo registration selected (Leader only). No additional teammate details required.
               </div>
-            </div>
+            )}
+
+            {/* Member 2 */}
+            {formData.team_size >= 2 && (
+              <div className="p-4 border border-hairline bg-base/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-subtle font-semibold uppercase">Member 2 Details</div>
+                  <span className="text-[10px] text-cyan font-mono">@bitsathy.ac.in required</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Full Name *</label>
+                    <input
+                      type="text"
+                      name="member2_name"
+                      value={formData.member2_name}
+                      onChange={handleChange}
+                      required
+                      placeholder="Member 2 Full Name"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Roll / College ID *</label>
+                    <input
+                      type="text"
+                      name="member2_college_id"
+                      value={formData.member2_college_id}
+                      onChange={handleChange}
+                      required
+                      placeholder="e.g. 7376221CS102"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Mobile Number *</label>
+                    <input
+                      type="tel"
+                      name="member2_phone"
+                      value={formData.member2_phone}
+                      onChange={handleChange}
+                      required
+                      placeholder="+91 9876543210"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">BIT Email *</label>
+                    <input
+                      type="email"
+                      name="member2_email"
+                      value={formData.member2_email}
+                      onChange={handleChange}
+                      required
+                      placeholder="member2@bitsathy.ac.in"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Member 3 */}
             {formData.team_size >= 3 && (
               <div className="p-4 border border-hairline bg-base/50 space-y-3">
-                <div className="text-xs text-subtle font-semibold uppercase">Member 3</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    name="member3_name"
-                    value={formData.member3_name}
-                    onChange={handleChange}
-                    placeholder="Member 3 Full Name"
-                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    name="member3_college_id"
-                    value={formData.member3_college_id}
-                    onChange={handleChange}
-                    placeholder="Roll / College ID"
-                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                  />
-                  <input
-                    type="email"
-                    name="member3_email"
-                    value={formData.member3_email}
-                    onChange={handleChange}
-                    placeholder="member3@bitsathy.ac.in"
-                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                  />
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-subtle font-semibold uppercase">Member 3 Details</div>
+                  <span className="text-[10px] text-cyan font-mono">@bitsathy.ac.in required</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Full Name *</label>
+                    <input
+                      type="text"
+                      name="member3_name"
+                      value={formData.member3_name}
+                      onChange={handleChange}
+                      required
+                      placeholder="Member 3 Full Name"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Roll / College ID *</label>
+                    <input
+                      type="text"
+                      name="member3_college_id"
+                      value={formData.member3_college_id}
+                      onChange={handleChange}
+                      required
+                      placeholder="e.g. 7376221CS103"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Mobile Number *</label>
+                    <input
+                      type="tel"
+                      name="member3_phone"
+                      value={formData.member3_phone}
+                      onChange={handleChange}
+                      required
+                      placeholder="+91 9876543210"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">BIT Email *</label>
+                    <input
+                      type="email"
+                      name="member3_email"
+                      value={formData.member3_email}
+                      onChange={handleChange}
+                      required
+                      placeholder="member3@bitsathy.ac.in"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -495,32 +686,59 @@ export default function RegistrationPage() {
             {/* Member 4 */}
             {formData.team_size >= 4 && (
               <div className="p-4 border border-hairline bg-base/50 space-y-3">
-                <div className="text-xs text-subtle font-semibold uppercase">Member 4</div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    name="member4_name"
-                    value={formData.member4_name}
-                    onChange={handleChange}
-                    placeholder="Member 4 Full Name"
-                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                  />
-                  <input
-                    type="text"
-                    name="member4_college_id"
-                    value={formData.member4_college_id}
-                    onChange={handleChange}
-                    placeholder="Roll / College ID"
-                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                  />
-                  <input
-                    type="email"
-                    name="member4_email"
-                    value={formData.member4_email}
-                    onChange={handleChange}
-                    placeholder="member4@bitsathy.ac.in"
-                    className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
-                  />
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-subtle font-semibold uppercase">Member 4 Details</div>
+                  <span className="text-[10px] text-cyan font-mono">@bitsathy.ac.in required</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Full Name *</label>
+                    <input
+                      type="text"
+                      name="member4_name"
+                      value={formData.member4_name}
+                      onChange={handleChange}
+                      required
+                      placeholder="Member 4 Full Name"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Roll / College ID *</label>
+                    <input
+                      type="text"
+                      name="member4_college_id"
+                      value={formData.member4_college_id}
+                      onChange={handleChange}
+                      required
+                      placeholder="e.g. 7376221CS104"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">Mobile Number *</label>
+                    <input
+                      type="tel"
+                      name="member4_phone"
+                      value={formData.member4_phone}
+                      onChange={handleChange}
+                      required
+                      placeholder="+91 9876543210"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] text-subtle block uppercase font-medium">BIT Email *</label>
+                    <input
+                      type="email"
+                      name="member4_email"
+                      value={formData.member4_email}
+                      onChange={handleChange}
+                      required
+                      placeholder="member4@bitsathy.ac.in"
+                      className="w-full px-3 py-2 text-xs bg-base text-content border border-hairline focus:border-cyan focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -531,7 +749,7 @@ export default function RegistrationPage() {
             disabled={submitting}
             className="w-full py-3.5 text-xs font-bold uppercase tracking-wider text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan disabled:opacity-50"
           >
-            {submitting ? "Registering Team..." : "Submit Registration &rarr;"}
+            {submitting ? "Registering Team..." : "Submit Registration →"}
           </button>
         </form>
       </div>

@@ -125,10 +125,13 @@ export default function AdminDashboardPage() {
         t.leader_department?.toLowerCase().includes(q) ||
         t.member2_name?.toLowerCase().includes(q) ||
         t.member2_college_id?.toLowerCase().includes(q) ||
+        t.member2_phone?.toLowerCase().includes(q) ||
         t.member3_name?.toLowerCase().includes(q) ||
         t.member3_college_id?.toLowerCase().includes(q) ||
+        t.member3_phone?.toLowerCase().includes(q) ||
         t.member4_name?.toLowerCase().includes(q) ||
-        t.member4_college_id?.toLowerCase().includes(q)
+        t.member4_college_id?.toLowerCase().includes(q) ||
+        t.member4_phone?.toLowerCase().includes(q)
       );
     });
   }, [teams, teamFilter, searchQuery]);
@@ -1000,9 +1003,10 @@ export default function AdminDashboardPage() {
                               <span className="text-content font-medium">{team.member2_name || "Member 2"}</span>
                               <span className="text-[10px] font-mono text-muted">[{team.member2_college_id || "No ID"}]</span>
                             </div>
-                            {team.member2_email && (
-                              <div className="text-[10px] text-muted font-mono pl-3">{team.member2_email}</div>
-                            )}
+                            <div className="text-[10px] text-muted font-mono pl-3 flex flex-wrap gap-x-2">
+                              {team.member2_email && <span>{team.member2_email}</span>}
+                              {team.member2_phone && <span>· {team.member2_phone}</span>}
+                            </div>
                           </div>
 
                           {team.member3_name && (
@@ -1012,9 +1016,10 @@ export default function AdminDashboardPage() {
                                 <span className="text-content font-medium">{team.member3_name}</span>
                                 <span className="text-[10px] font-mono text-muted">[{team.member3_college_id || "No ID"}]</span>
                               </div>
-                              {team.member3_email && (
-                                <div className="text-[10px] text-muted font-mono pl-3">{team.member3_email}</div>
-                              )}
+                              <div className="text-[10px] text-muted font-mono pl-3 flex flex-wrap gap-x-2">
+                                {team.member3_email && <span>{team.member3_email}</span>}
+                                {team.member3_phone && <span>· {team.member3_phone}</span>}
+                              </div>
                             </div>
                           )}
 
@@ -1025,9 +1030,10 @@ export default function AdminDashboardPage() {
                                 <span className="text-content font-medium">{team.member4_name}</span>
                                 <span className="text-[10px] font-mono text-muted">[{team.member4_college_id || "No ID"}]</span>
                               </div>
-                              {team.member4_email && (
-                                <div className="text-[10px] text-muted font-mono pl-3">{team.member4_email}</div>
-                              )}
+                              <div className="text-[10px] text-muted font-mono pl-3 flex flex-wrap gap-x-2">
+                                {team.member4_email && <span>{team.member4_email}</span>}
+                                {team.member4_phone && <span>· {team.member4_phone}</span>}
+                              </div>
                             </div>
                           )}
                         </td>
@@ -2509,21 +2515,35 @@ export default function AdminDashboardPage() {
                       <span className="text-muted">College / Roll ID:</span>{" "}
                       <strong className="text-content">{selectedTeamForDetails.member2_college_id || "Not Provided"}</strong>
                     </div>
+                    {selectedTeamForDetails.member2_phone && (
+                      <div>
+                        <span className="text-muted">Mobile:</span>{" "}
+                        <span className="text-content font-semibold">{selectedTeamForDetails.member2_phone}</span>
+                      </div>
+                    )}
                     <div>
                       <span className="text-muted">Affiliation:</span> Verified Team Member
                     </div>
                   </div>
 
-                  {selectedTeamForDetails.member2_email && (
-                    <div className="pt-2">
+                  <div className="pt-2 flex flex-wrap gap-2">
+                    {selectedTeamForDetails.member2_email && (
                       <a
                         href={`mailto:${selectedTeamForDetails.member2_email}`}
                         className="px-3 py-1 text-[11px] border border-hairline bg-base hover:bg-panel transition-colors text-content"
                       >
                         ✉ Send Email
                       </a>
-                    </div>
-                  )}
+                    )}
+                    {selectedTeamForDetails.member2_phone && (
+                      <a
+                        href={`tel:${selectedTeamForDetails.member2_phone}`}
+                        className="px-3 py-1 text-[11px] border border-cyan/40 bg-cyan/10 text-cyan hover:bg-cyan/20 transition-colors"
+                      >
+                        📞 Call
+                      </a>
+                    )}
+                  </div>
                 </div>
 
                 {selectedTeamForDetails.member3_name && (
@@ -2551,21 +2571,35 @@ export default function AdminDashboardPage() {
                         <span className="text-muted">College / Roll ID:</span>{" "}
                         <strong className="text-content">{selectedTeamForDetails.member3_college_id || "Not Provided"}</strong>
                       </div>
+                      {selectedTeamForDetails.member3_phone && (
+                        <div>
+                          <span className="text-muted">Mobile:</span>{" "}
+                          <span className="text-content font-semibold">{selectedTeamForDetails.member3_phone}</span>
+                        </div>
+                      )}
                       <div>
                         <span className="text-muted">Affiliation:</span> Verified Team Member
                       </div>
                     </div>
 
-                    {selectedTeamForDetails.member3_email && (
-                      <div className="pt-2">
+                    <div className="pt-2 flex flex-wrap gap-2">
+                      {selectedTeamForDetails.member3_email && (
                         <a
                           href={`mailto:${selectedTeamForDetails.member3_email}`}
                           className="px-3 py-1 text-[11px] border border-hairline bg-base hover:bg-panel transition-colors text-content"
                         >
                           ✉ Send Email
                         </a>
-                      </div>
-                    )}
+                      )}
+                      {selectedTeamForDetails.member3_phone && (
+                        <a
+                          href={`tel:${selectedTeamForDetails.member3_phone}`}
+                          className="px-3 py-1 text-[11px] border border-cyan/40 bg-cyan/10 text-cyan hover:bg-cyan/20 transition-colors"
+                        >
+                          📞 Call
+                        </a>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -2594,21 +2628,35 @@ export default function AdminDashboardPage() {
                         <span className="text-muted">College / Roll ID:</span>{" "}
                         <strong className="text-content">{selectedTeamForDetails.member4_college_id || "Not Provided"}</strong>
                       </div>
+                      {selectedTeamForDetails.member4_phone && (
+                        <div>
+                          <span className="text-muted">Mobile:</span>{" "}
+                          <span className="text-content font-semibold">{selectedTeamForDetails.member4_phone}</span>
+                        </div>
+                      )}
                       <div>
                         <span className="text-muted">Affiliation:</span> Verified Team Member
                       </div>
                     </div>
 
-                    {selectedTeamForDetails.member4_email && (
-                      <div className="pt-2">
+                    <div className="pt-2 flex flex-wrap gap-2">
+                      {selectedTeamForDetails.member4_email && (
                         <a
                           href={`mailto:${selectedTeamForDetails.member4_email}`}
                           className="px-3 py-1 text-[11px] border border-hairline bg-base hover:bg-panel transition-colors text-content"
                         >
                           ✉ Send Email
                         </a>
-                      </div>
-                    )}
+                      )}
+                      {selectedTeamForDetails.member4_phone && (
+                        <a
+                          href={`tel:${selectedTeamForDetails.member4_phone}`}
+                          className="px-3 py-1 text-[11px] border border-cyan/40 bg-cyan/10 text-cyan hover:bg-cyan/20 transition-colors"
+                        >
+                          📞 Call
+                        </a>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

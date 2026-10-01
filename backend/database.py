@@ -39,11 +39,14 @@ def init_db_migrations():
         conn = get_connection()
         with conn.cursor() as cur:
             cur.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS email_sent BOOLEAN DEFAULT FALSE;")
+            cur.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS member2_phone VARCHAR(50);")
+            cur.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS member3_phone VARCHAR(50);")
+            cur.execute("ALTER TABLE teams ADD COLUMN IF NOT EXISTS member4_phone VARCHAR(50);")
             cur.execute("ALTER TABLE submissions ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE;")
             cur.execute("ALTER TABLE problem_statements DROP CONSTRAINT IF EXISTS problem_statements_domain_check;")
             conn.commit()
         conn.close()
-        logger.info("Database schema migration verified successfully (email_sent, is_locked, & custom domains).")
+        logger.info("Database schema migration verified successfully (email_sent, member phones, is_locked, & custom domains).")
     except Exception as err:
         logger.warning(f"Database schema migration check skipped or failed: {err}")
 

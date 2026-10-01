@@ -204,6 +204,7 @@ export default function MemberDashboardPage() {
                     <div className="text-[11px] text-muted mt-0.5 space-y-0.5">
                       {teamData?.member2_email && <div>Email: {teamData.member2_email}</div>}
                       <div>Roll: {teamData?.member2_college_id || "N/A"}</div>
+                      {teamData?.member2_phone && <div>Phone: {teamData.member2_phone}</div>}
                     </div>
                   </div>
 
@@ -214,6 +215,7 @@ export default function MemberDashboardPage() {
                       <div className="text-[11px] text-muted mt-0.5 space-y-0.5">
                         {teamData?.member3_email && <div>Email: {teamData.member3_email}</div>}
                         <div>Roll: {teamData.member3_college_id || "N/A"}</div>
+                        {teamData?.member3_phone && <div>Phone: {teamData.member3_phone}</div>}
                       </div>
                     </div>
                   )}
@@ -225,6 +227,7 @@ export default function MemberDashboardPage() {
                       <div className="text-[11px] text-muted mt-0.5 space-y-0.5">
                         {teamData?.member4_email && <div>Email: {teamData.member4_email}</div>}
                         <div>Roll: {teamData.member4_college_id || "N/A"}</div>
+                        {teamData?.member4_phone && <div>Phone: {teamData.member4_phone}</div>}
                       </div>
                     </div>
                   )}

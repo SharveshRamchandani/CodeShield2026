@@ -110,12 +110,15 @@ class TeamCreate(BaseModel):
     leader_year: str
     member2_name: Optional[str] = None
     member2_college_id: Optional[str] = None
+    member2_phone: Optional[str] = None
     member2_email: Optional[str] = None
     member3_name: Optional[str] = None
     member3_college_id: Optional[str] = None
+    member3_phone: Optional[str] = None
     member3_email: Optional[str] = None
     member4_name: Optional[str] = None
     member4_college_id: Optional[str] = None
+    member4_phone: Optional[str] = None
     member4_email: Optional[str] = None
     problem_statement_id: Optional[UUID] = None
 

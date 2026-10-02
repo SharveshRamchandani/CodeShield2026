@@ -41,6 +41,7 @@ export default function AdminDashboardPage() {
 
   // User Management Filters & Creation State
   const [userSearchQuery, setUserSearchQuery] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("all"); // 'all' | 'staff' | 'admin' | 'judge' | 'leader' | 'member'
   const [updatingUserId, setUpdatingUserId] = useState(null);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
@@ -136,17 +137,46 @@ export default function AdminDashboardPage() {
     });
   }, [teams, teamFilter, searchQuery]);
 
+  // User Role Counts Breakdown
+  const userCounts = useMemo(() => {
+    let admins = 0, judges = 0, leaders = 0, members = 0;
+    for (const u of usersList) {
+      if (u.role === "admin") admins++;
+      else if (u.role === "judge") judges++;
+      else if (u.role === "leader") leaders++;
+      else if (u.role === "member") members++;
+    }
+    return {
+      total: usersList.length,
+      staff: admins + judges,
+      admins,
+      judges,
+      leaders,
+      members,
+    };
+  }, [usersList]);
+
   // Filtered Users List
   const filteredUsers = useMemo(() => {
-    const q = userSearchQuery.trim().toLowerCase();
-    if (!q) return usersList;
-    return usersList.filter(
-      (u) =>
+    return usersList.filter((u) => {
+      if (userRoleFilter === "staff" && !["admin", "judge"].includes(u.role)) return false;
+      if (userRoleFilter === "admin" && u.role !== "admin") return false;
+      if (userRoleFilter === "judge" && u.role !== "judge") return false;
+      if (userRoleFilter === "leader" && u.role !== "leader") return false;
+      if (userRoleFilter === "member" && u.role !== "member") return false;
+
+      const q = userSearchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
         u.name?.toLowerCase().includes(q) ||
         u.email?.toLowerCase().includes(q) ||
-        u.role?.toLowerCase().includes(q)
-    );
-  }, [usersList, userSearchQuery]);
+        u.role?.toLowerCase().includes(q) ||
+        u.team_name?.toLowerCase().includes(q) ||
+        u.team_code?.toLowerCase().includes(q) ||
+        u.id?.toLowerCase().includes(q)
+      );
+    });
+  }, [usersList, userRoleFilter, userSearchQuery]);
 
   // Aggregate Scores for Leaderboard
   const leaderboard = useMemo(() => {
@@ -1536,7 +1566,7 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 4: USER & ROLE MANAGEMENT (INSTANT PROMOTE / DEMOTE & DIRECT USER ADDITION) */}
+        {/* TAB 4: USER & ROLE MANAGEMENT (INSTANT PROMOTE / DEMOTE & DIRECT USER PROVISIONING) */}
         {activeTab === "users" && (
           <div className="space-y-4">
             {/* Header & Quick Action info */}
@@ -1544,10 +1574,10 @@ export default function AdminDashboardPage() {
               <div>
                 <div className="text-xs font-bold text-cyan uppercase flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan" />
-                  // RBAC STAFF MANAGEMENT & DIRECT USER PROVISIONING
+                  // RBAC STAFF & PARTICIPANT USER MANAGEMENT
                 </div>
                 <p className="text-[11px] text-muted mt-0.5">
-                  Directly provision new staff accounts or change assigned roles between <strong className="text-cyan">ADMIN</strong> and <strong className="text-amber">JUDGE</strong>.
+                  Manage roles across all registered staff, team leaders, and team members. Instantly promote to <strong className="text-cyan">ADMIN</strong>, assign as <strong className="text-amber">JUDGE</strong>, or manage participant roles.
                 </p>
               </div>
 
@@ -1561,16 +1591,41 @@ export default function AdminDashboardPage() {
                   <span className="text-sm leading-none">+</span> Add Staff User
                 </button>
 
-                <div className="w-full sm:w-56">
+                <div className="w-full sm:w-64">
                   <input
                     type="text"
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
-                    placeholder="Search name, email, role..."
+                    placeholder="Search name, email, team, code, role..."
                     className="px-3 py-1.5 text-xs bg-base border border-hairline text-content focus:border-cyan focus:outline-none w-full font-mono"
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Filter Pills / Category Tabs */}
+            <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+              {[
+                { id: "all", label: `ALL USERS (${userCounts.total})` },
+                { id: "staff", label: `STAFF ONLY (${userCounts.staff})` },
+                { id: "admin", label: `ADMINS (${userCounts.admins})` },
+                { id: "judge", label: `JUDGES (${userCounts.judges})` },
+                { id: "leader", label: `TEAM LEADERS (${userCounts.leaders})` },
+                { id: "member", label: `TEAM MEMBERS (${userCounts.members})` },
+              ].map((pill) => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setUserRoleFilter(pill.id)}
+                  className={`px-3 py-1 text-xs border font-semibold transition-colors ${
+                    userRoleFilter === pill.id
+                      ? "border-cyan bg-cyan/15 text-cyan"
+                      : "border-hairline bg-panel text-muted hover:text-content"
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
             </div>
 
             {/* Users Table */}
@@ -1578,8 +1633,9 @@ export default function AdminDashboardPage() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-hairline bg-base/60 text-muted uppercase text-[10px]">
-                    <th className="p-3">Staff / User</th>
+                    <th className="p-3">User / Contributor</th>
                     <th className="p-3">Email Address</th>
+                    <th className="p-3">Assigned Team</th>
                     <th className="p-3">Current Role</th>
                     <th className="p-3 text-center">Direct Role Selector</th>
                     <th className="p-3 text-right">Instant Action</th>
@@ -1588,8 +1644,8 @@ export default function AdminDashboardPage() {
                 <tbody className="divide-y divide-hairline/60">
                   {filteredUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-muted">
-                        No users found matching your search.
+                      <td colSpan={6} className="p-8 text-center text-muted">
+                        No users found matching your search or role filter.
                       </td>
                     </tr>
                   ) : (
@@ -1598,23 +1654,54 @@ export default function AdminDashboardPage() {
                       const isUpdating = updatingUserId === u.id;
 
                       return (
-                        <tr key={u.id} className="hover:bg-base/40 transition-colors">
+                        <tr key={u.id || u.email} className="hover:bg-base/40 transition-colors">
                           <td className="p-3">
                             <div className="font-bold text-content flex items-center gap-2">
-                              {u.name || "Staff Member"}
+                              {u.name || "User"}
                               {isSelf && (
                                 <span className="text-[9px] px-1.5 py-0.2 border border-cyan/50 text-cyan bg-cyan/10">
                                   YOU
                                 </span>
                               )}
                             </div>
-                            <div className="text-[10px] text-subtle font-mono">{u.id}</div>
+                            <div className="text-[10px] text-subtle font-mono truncate max-w-[140px]" title={u.id}>
+                              {u.id}
+                            </div>
                           </td>
 
                           <td className="p-3 font-mono text-[11px] text-muted">
-                            {u.email}
+                            <a href={`mailto:${u.email}`} className="hover:text-cyan transition-colors">
+                              {u.email}
+                            </a>
                           </td>
 
+                          {/* Team Affiliation */}
+                          <td className="p-3">
+                            {u.team_code ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSearchQuery(u.team_code);
+                                  setActiveTab("teams");
+                                }}
+                                className="group text-left"
+                                title="Click to view team in Teams Tab"
+                              >
+                                <span className="text-[10px] font-mono px-1.5 py-0.5 border border-cyan/40 bg-cyan/10 text-cyan font-bold mr-1.5 group-hover:bg-cyan group-hover:text-zinc-950 transition-colors">
+                                  {u.team_code}
+                                </span>
+                                <span className="font-semibold text-content group-hover:text-cyan transition-colors">
+                                  {u.team_name || "Team"}
+                                </span>
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-subtle font-mono uppercase">
+                                Staff / Internal
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Role Badge */}
                           <td className="p-3">
                             <span
                               className={`px-2.5 py-1 text-[10px] font-bold border inline-block ${
@@ -1648,6 +1735,7 @@ export default function AdminDashboardPage() {
                               <option value="admin">ADMIN</option>
                               <option value="judge">JUDGE</option>
                               <option value="leader">TEAM LEADER</option>
+                              <option value="member">TEAM MEMBER</option>
                             </select>
                           </td>
 
@@ -1659,7 +1747,7 @@ export default function AdminDashboardPage() {
                                   type="button"
                                   disabled={isUpdating}
                                   onClick={() => handleUpdateUserRole(u.id, u.role, "admin")}
-                                  className="px-3 py-1 text-xs font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50"
+                                  className="px-2.5 py-1 text-[11px] font-bold text-zinc-950 bg-cyan hover:bg-cyan-hover transition-colors disabled:opacity-50 whitespace-nowrap"
                                 >
                                   {isUpdating ? "Updating..." : "▲ Make Admin"}
                                 </button>
@@ -1669,7 +1757,7 @@ export default function AdminDashboardPage() {
                                   disabled={isUpdating || isSelf}
                                   onClick={() => handleUpdateUserRole(u.id, u.role, "judge")}
                                   title={isSelf ? "Cannot demote your own account" : "Demote to Judge"}
-                                  className="px-3 py-1 text-xs text-amber border border-amber/60 hover:bg-amber/10 transition-colors disabled:opacity-40"
+                                  className="px-2.5 py-1 text-[11px] text-amber border border-amber/60 hover:bg-amber/10 transition-colors disabled:opacity-40 whitespace-nowrap"
                                 >
                                   {isUpdating ? "Updating..." : "▼ Set Judge"}
                                 </button>
@@ -2252,11 +2340,11 @@ export default function AdminDashboardPage() {
                 <label className="text-[11px] uppercase text-subtle font-semibold block">
                   Assigned User Role
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setNewUserForm({ ...newUserForm, role: "judge" })}
-                    className={`py-2 px-3 border text-center font-bold text-xs transition-colors ${
+                    className={`py-2 px-2 border text-center font-bold text-xs transition-colors ${
                       newUserForm.role === "judge"
                         ? "border-amber bg-amber/10 text-amber"
                         : "border-hairline bg-base text-muted hover:text-content"
@@ -2268,7 +2356,7 @@ export default function AdminDashboardPage() {
                   <button
                     type="button"
                     onClick={() => setNewUserForm({ ...newUserForm, role: "admin" })}
-                    className={`py-2 px-3 border text-center font-bold text-xs transition-colors ${
+                    className={`py-2 px-2 border text-center font-bold text-xs transition-colors ${
                       newUserForm.role === "admin"
                         ? "border-cyan bg-cyan/10 text-cyan"
                         : "border-hairline bg-base text-muted hover:text-content"
@@ -2280,13 +2368,25 @@ export default function AdminDashboardPage() {
                   <button
                     type="button"
                     onClick={() => setNewUserForm({ ...newUserForm, role: "leader" })}
-                    className={`py-2 px-3 border text-center font-bold text-xs transition-colors ${
+                    className={`py-2 px-2 border text-center font-bold text-xs transition-colors ${
                       newUserForm.role === "leader"
                         ? "border-emerald-500 bg-emerald-950/30 text-emerald-400"
                         : "border-hairline bg-base text-muted hover:text-content"
                     }`}
                   >
                     TEAM LEADER
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewUserForm({ ...newUserForm, role: "member" })}
+                    className={`py-2 px-2 border text-center font-bold text-xs transition-colors ${
+                      newUserForm.role === "member"
+                        ? "border-sky-400 bg-sky-950/30 text-sky-400"
+                        : "border-hairline bg-base text-muted hover:text-content"
+                    }`}
+                  >
+                    TEAM MEMBER
                   </button>
                 </div>
               </div>

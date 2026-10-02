@@ -425,29 +425,119 @@ def list_admin_users(
     db=Depends(get_db),
 ):
     """
-    Returns all registered users with their current assigned roles (admin / judge).
-    Sorted by admin role first, then alphabetical name.
+    Returns all registered users (staff, team leaders, and team members)
+    with their current assigned roles and associated team metadata.
+    Sorted by role priority (admin, judge, leader, member), then team and name.
     """
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # 1. Fetch explicit users from users table
             cur.execute("""
                 SELECT id, email, role, name, created_at
-                FROM users
-                ORDER BY 
-                    CASE WHEN role = 'admin' THEN 1 WHEN role = 'judge' THEN 2 ELSE 3 END,
-                    name ASC;
+                FROM users;
             """)
-            rows = cur.fetchall()
-            return [
-                {
-                    "id": str(row["id"]),
-                    "email": row["email"],
-                    "role": row["role"],
-                    "name": row["name"],
-                    "created_at": row["created_at"],
+            db_users = cur.fetchall()
+
+            # 2. Fetch all teams to associate users with teams and discover team members
+            cur.execute("""
+                SELECT id, team_name, team_code,
+                       leader_name, leader_email,
+                       member2_name, member2_email,
+                       member3_name, member3_email,
+                       member4_name, member4_email,
+                       created_at
+                FROM teams
+                ORDER BY created_at DESC;
+            """)
+            teams = cur.fetchall()
+
+            # Map participant emails to team metadata
+            email_to_team = {}
+            for t in teams:
+                t_code = t.get("team_code")
+                t_name = t.get("team_name")
+                if t.get("leader_email"):
+                    email_to_team[t["leader_email"].strip().lower()] = (t_code, t_name)
+                for i in (2, 3, 4):
+                    m_email = t.get(f"member{i}_email")
+                    if m_email and m_email.strip():
+                        email_to_team[m_email.strip().lower()] = (t_code, t_name)
+
+            user_map = {}
+            # Add existing DB users
+            for u in db_users:
+                email_key = (u["email"] or "").strip().lower()
+                team_info = email_to_team.get(email_key, (None, None))
+                user_map[email_key] = {
+                    "id": str(u["id"]),
+                    "email": u["email"],
+                    "role": u["role"],
+                    "name": u["name"],
+                    "team_code": team_info[0],
+                    "team_name": team_info[1],
+                    "created_at": u["created_at"],
                 }
-                for row in rows
-            ]
+
+            # Add team leaders and members who aren't yet explicitly in users table
+            for t in teams:
+                team_id = str(t["id"])
+                t_code = t.get("team_code")
+                t_name = t.get("team_name")
+                t_created = t.get("created_at")
+
+                # Team Leader
+                l_email = (t.get("leader_email") or "").strip().lower()
+                l_name = (t.get("leader_name") or "").strip() or "Team Leader"
+                if l_email:
+                    if l_email in user_map:
+                        if not user_map[l_email].get("team_code"):
+                            user_map[l_email]["team_code"] = t_code
+                            user_map[l_email]["team_name"] = t_name
+                    else:
+                        user_map[l_email] = {
+                            "id": team_id,
+                            "email": l_email,
+                            "role": "leader",
+                            "name": l_name,
+                            "team_code": t_code,
+                            "team_name": t_name,
+                            "created_at": t_created,
+                        }
+
+                # Team Members 2, 3, 4
+                for i in (2, 3, 4):
+                    m_name = (t.get(f"member{i}_name") or "").strip()
+                    m_email = (t.get(f"member{i}_email") or "").strip().lower()
+                    if m_name:
+                        effective_email = m_email or f"{t_code.lower()}-member{i}@bitsathy.ac.in"
+                        if effective_email in user_map:
+                            if not user_map[effective_email].get("team_code"):
+                                user_map[effective_email]["team_code"] = t_code
+                                user_map[effective_email]["team_name"] = t_name
+                        else:
+                            user_map[effective_email] = {
+                                "id": f"{team_id}-m{i}",
+                                "email": effective_email,
+                                "role": "member",
+                                "name": m_name,
+                                "team_code": t_code,
+                                "team_name": t_name,
+                                "created_at": t_created,
+                            }
+
+            result_users = list(user_map.values())
+
+            # Sort order: admin -> judge -> leader -> member, then team_code and name
+            role_order = {"admin": 1, "judge": 2, "leader": 3, "member": 4}
+            result_users.sort(
+                key=lambda x: (
+                    role_order.get(x.get("role", ""), 5),
+                    x.get("team_code") or "",
+                    (x.get("name") or "").lower(),
+                )
+            )
+
+            return result_users
     except psycopg2.Error as db_err:
         logger.error(f"Database error listing users: {db_err}")
         raise HTTPException(
@@ -463,13 +553,14 @@ def list_admin_users(
     summary="Instant promote or demote user role in Supabase / Postgres (Admin)",
 )
 def update_user_role(
-    user_id: UUID,
+    user_id: str,
     role_data: UserRoleUpdate,
     db=Depends(get_db),
 ):
     """
-    Instantly updates a user's role in the Supabase/PostgreSQL users table
-    between 'admin', 'judge', 'leader', and 'member' with immediate transaction commit.
+    Instantly updates a user's role between 'admin', 'judge', 'leader', and 'member'.
+    If the user was registered under a team but not yet in the users table, they are
+    automatically provisioned in the users table.
     """
     new_role = role_data.role.strip().lower()
     allowed_roles = ["admin", "judge", "leader", "member"]
@@ -481,11 +572,12 @@ def update_user_role(
 
     try:
         with db.cursor(cursor_factory=RealDictCursor) as cur:
+            # 1. Try updating by direct UUID in users table
             cur.execute(
                 """
                 UPDATE users
                 SET role = %s
-                WHERE id = %s
+                WHERE id::text = %s
                 RETURNING id, email, role, name, created_at;
                 """,
                 (new_role, str(user_id)),
@@ -493,10 +585,90 @@ def update_user_role(
             updated_user = cur.fetchone()
 
             if not updated_user:
+                # 2. Check if user_id is a team id / member id or email
+                clean_team_id = str(user_id).split("-m")[0]
+                cur.execute(
+                    "SELECT * FROM teams WHERE id::text = %s;",
+                    (clean_team_id,),
+                )
+                team = cur.fetchone()
+
+                target_email = None
+                target_name = "User"
+
+                if team:
+                    team_code = team["team_code"]
+                    if "-m2" in str(user_id):
+                        target_email = team.get("member2_email") or f"{team_code.lower()}-member2@bitsathy.ac.in"
+                        target_name = team.get("member2_name") or "Member 2"
+                    elif "-m3" in str(user_id):
+                        target_email = team.get("member3_email") or f"{team_code.lower()}-member3@bitsathy.ac.in"
+                        target_name = team.get("member3_name") or "Member 3"
+                    elif "-m4" in str(user_id):
+                        target_email = team.get("member4_email") or f"{team_code.lower()}-member4@bitsathy.ac.in"
+                        target_name = team.get("member4_name") or "Member 4"
+                    else:
+                        target_email = team["leader_email"]
+                        target_name = team["leader_name"]
+
+                if not target_email:
+                    # Check if user_id was an email string
+                    target_email = str(user_id)
+
+                # Check if email is already in users table
+                cur.execute(
+                    "SELECT id, email, role, name, created_at FROM users WHERE LOWER(email) = LOWER(%s);",
+                    (target_email.lower(),),
+                )
+                existing_u = cur.fetchone()
+
+                if existing_u:
+                    cur.execute(
+                        """
+                        UPDATE users
+                        SET role = %s
+                        WHERE id = %s
+                        RETURNING id, email, role, name, created_at;
+                        """,
+                        (new_role, existing_u["id"]),
+                    )
+                    updated_user = cur.fetchone()
+                elif target_email and "@" in target_email:
+                    # Insert new user with default password
+                    pwd_hash = hash_password("codeshield2026")
+                    cur.execute(
+                        """
+                        INSERT INTO users (email, password_hash, role, name)
+                        VALUES (%s, %s, %s, %s)
+                        RETURNING id, email, role, name, created_at;
+                        """,
+                        (target_email.lower(), pwd_hash, new_role, target_name),
+                    )
+                    updated_user = cur.fetchone()
+
+            if not updated_user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"User with ID '{user_id}' not found.",
+                    detail=f"User with ID or reference '{user_id}' not found.",
                 )
+
+            # Check team metadata for response
+            cur.execute(
+                """
+                SELECT team_code, team_name FROM teams 
+                WHERE LOWER(leader_email) = LOWER(%s)
+                   OR LOWER(COALESCE(member2_email, '')) = LOWER(%s)
+                   OR LOWER(COALESCE(member3_email, '')) = LOWER(%s)
+                   OR LOWER(COALESCE(member4_email, '')) = LOWER(%s);
+                """,
+                (
+                    updated_user["email"],
+                    updated_user["email"],
+                    updated_user["email"],
+                    updated_user["email"],
+                ),
+            )
+            t_info = cur.fetchone()
 
             db.commit()
             logger.info(f"User {updated_user['email']} role updated to '{new_role}' by admin.")
@@ -506,6 +678,8 @@ def update_user_role(
                 "email": updated_user["email"],
                 "role": updated_user["role"],
                 "name": updated_user["name"],
+                "team_code": t_info["team_code"] if t_info else None,
+                "team_name": t_info["team_name"] if t_info else None,
                 "created_at": updated_user["created_at"],
             }
     except HTTPException:
@@ -630,7 +804,7 @@ def create_admin_user(
     summary="Delete a staff user (Admin Only)",
 )
 def delete_admin_user(
-    user_id: UUID,
+    user_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
@@ -638,7 +812,7 @@ def delete_admin_user(
     Permanently deletes a staff user account.
     Admins are prevented from deleting their own active account.
     """
-    if str(user_id) == str(current_user.get("id")):
+    if str(user_id) == str(current_user.get("id")) or str(user_id).lower() == str(current_user.get("email", "")).lower():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot delete your own active administrator account.",
@@ -646,12 +820,7 @@ def delete_admin_user(
 
     try:
         with db.cursor() as cur:
-            cur.execute("DELETE FROM users WHERE id = %s;", (str(user_id),))
-            if cur.rowcount == 0:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="User not found.",
-                )
+            cur.execute("DELETE FROM users WHERE id::text = %s OR LOWER(email) = LOWER(%s);", (str(user_id), str(user_id)))
             db.commit()
             return
     except HTTPException:
